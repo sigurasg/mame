@@ -40832,6 +40832,9 @@ tehkanwcc                       // bootleg
 tehkanwcd                       // (c) 1985 Tehkan
 tehkanwch                       // (c) 1986 (hack)
 
+@source:tek2465.cpp
+tek2465                         // 2465 Oscilloscope
+
 @source:tek405x.cpp
 tek4051                         //
 tek4052a                        //

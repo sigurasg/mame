@@ -3963,6 +3963,7 @@ files {
 
 createMESSProjects(_target, _subtarget, "tektroni")
 files {
+	MAME_DIR .. "src/mame/drivers/tek2465.cpp",
 	MAME_DIR .. "src/mame/drivers/tek405x.cpp",
 	MAME_DIR .. "src/mame/includes/tek405x.h",
 	MAME_DIR .. "src/mame/drivers/tek410x.cpp",
