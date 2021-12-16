@@ -6,6 +6,7 @@
 
 ****************************************************************************/
 
+#include <string>
 
 #include "emu.h"
 
@@ -23,6 +24,7 @@ public:
 	void device_start() override;
 
 private:
+    static std::string get_port_name(offs_t offset);
 	// uint32_t    m_front_panel_leds;
 };
 
@@ -52,16 +54,73 @@ tek2465_io_device::tek2465_io_device(const machine_config& mconfig, const char* 
 }
 
 void tek2465_io_device::write(offs_t offset, uint8_t data) {
-	logerror("Write 0x%02x to 0x%02x\n", data, offset);
+	logerror("Write 0x%02x to %s\n", data, get_port_name(offset).c_str());
 }
 
 uint8_t tek2465_io_device::read(offs_t offset) {
-	logerror("Read from 0x%02x\n", offset);
+	logerror("Read from %s\n", get_port_name(offset).c_str());
 	return 0x01;
 }
 
 void tek2465_io_device::device_start() {
 	// TODO(siggi): Writeme.
+}
+
+// static
+std::string tek2465_io_device::get_port_name(offs_t offset) {
+    offs_t index = offset & 0x3F;
+    const char* name = nullptr;
+    switch (offset >> 6) {
+        case 0:
+            name = "UNUSED";
+            break;
+        case 1:
+            name = "DAC_MSB_CLK";
+            break;
+        case 2:
+            name = "DAC_LSB_CLK";
+            break;
+        case 3:
+            name = "PORT_1_CLK";
+            break;
+        case 4:
+            name = "ROS_1_CLK";
+            break;
+        case 5:
+            name = "ROS_2_CLK";
+            break;
+        case 6:
+            name = "PORT_2_CLK";
+            break;
+        case 7:
+            switch (offset & 0xF) {
+                case 0: return "UNUSED(fine)";
+                case 1: return "DMUX0_OFF";
+                case 2: return "DMUX0_ON";
+                case 3: return "PORT_3_IN";
+                case 4: return "DMUX1_OFF";
+                case 5: return "DMUX1_ON";
+                case 6: return "LED_CLK";
+                case 7: return "DISP_SEQ_CLK";
+                case 8: return "ATTN_CLK";
+                case 9: return "CH2_PA_CLK";
+                case 10: return "CH1_PA_CLK";
+                case 11: return "B_SWP_CLK";
+                case 12: return "A_SWP_CLK";
+                case 13: return "B_TRIG_CLK";
+                case 14: return "A_TRIG_CLK";
+                case 15: return "TRIG_STAT_STRB";
+            }
+    }
+
+    if (index == 0)
+        return name;
+
+    char buf[128];
+    snprintf(buf, sizeof(buf), "%s+0x%02X", name, index);
+
+    return buf;
+
 }
 
 tek2465_state::tek2465_state(const machine_config& config, device_type type, const char* tag) :
@@ -71,8 +130,8 @@ tek2465_state::tek2465_state(const machine_config& config, device_type type, con
 }
 
 void tek2465_state::tek2465(machine_config& config) {
-	M6808(config, m_maincpu, 1000000);
-	TEK2465IO(config, m_io_device, 100000);
+	M6808(config, m_maincpu, 5_MHz_XTAL);
+	TEK2465IO(config, m_io_device, 5_MHz_XTAL);
 	m_maincpu->set_addrmap(AS_PROGRAM, &tek2465_state::tek2465_map);
 }
 
