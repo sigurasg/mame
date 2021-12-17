@@ -6,8 +6,6 @@
 
 ****************************************************************************/
 
-#include <string>
-
 #include "emu.h"
 
 #include "cpu/m6800/m6800.h"
@@ -22,9 +20,36 @@ public:
 	void init_tek2465();
 
 private:
+    enum IOPort {
+		UNUSED,
+		DAC_MSB_CLK,
+		DAC_LSB_CLK,
+		PORT_1_CLK,
+		ROS_1_CLK,
+		ROS_2_CLK,
+		PORT_2_CLK,
+		DMUX0_OFF,
+		DMUX0_ON,
+		PORT_3_IN,
+		DMUX1_OFF,
+		DMUX1_ON,
+		LED_CLK,
+		DISP_SEQ_CLK,
+		ATTN_CLK,
+		CH2_PA_CLK,
+		CH1_PA_CLK,
+		B_SWP_CLK,
+		A_SWP_CLK,
+		B_TRIG_CLK,
+		A_TRIG_CLK,
+		TRIG_STAT_STRB,
+    };
+
 	void tek2465_map(address_map& map);
 
-	static std::string get_io_port_name(offs_t offset);
+	static IOPort get_io_port(offs_t offset);
+	static const char* get_io_port_name(IOPort io_port);
+
     // IO port accesses.
 	void io_write(offs_t offset, uint8_t data);
 	uint8_t io_read(offs_t offset);
@@ -67,69 +92,96 @@ void tek2465_state::tek2465_map(address_map& map) {
 }
 
 void tek2465_state::io_write(offs_t offset, uint8_t data) {
-	logerror("Write 0x%02x to %s\n", data, get_io_port_name(offset).c_str());
+	IOPort io_port = get_io_port(offset);
+	switch (io_port) {
+		case PORT_1_CLK:
+			m_earom->c1_w(BIT(data, 0));
+			m_earom->c2_w(BIT(data, 1));
+			m_earom->c3_w(BIT(data, 2));
+			m_earom->clock_w(BIT(data, 3));
+			m_earom->data_w(BIT(data, 4));
+			break;
+		default:
+			break;
+	}
+
+	logerror("Write 0x%02x to %s\n", data, get_io_port_name(io_port));
 }
 
 uint8_t tek2465_state::io_read(offs_t offset) {
-	logerror("Read from %s\n", get_io_port_name(offset).c_str());
-	return 0x01;
+	IOPort io_port = get_io_port(offset);
+	uint8_t read_value = 0x01;
+	switch (io_port) {
+		case PORT_3_IN:
+			read_value = (m_earom->data_r() << 4);
+			break;
+		default:
+			break;
+	}
+
+	logerror("Read 0x%02X from %s\n", read_value, get_io_port_name(io_port));
+	return read_value;
 }
 
 // static
-std::string tek2465_state::get_io_port_name(offs_t offset) {
-	offs_t index = offset & 0x3F;
-	const char* name = nullptr;
+const char* tek2465_state::get_io_port_name(IOPort io_port) {
+	switch (io_port) {
+		case UNUSED: return "UNUSED";
+		case DAC_MSB_CLK: return "DAC_MSB_CLK";
+		case DAC_LSB_CLK: return "DAC_LSB_CLK";
+		case PORT_1_CLK: return "PORT_1_CLK";
+		case ROS_1_CLK: return "ROS_1_CLK";
+		case ROS_2_CLK: return "ROS_2_CLK";
+		case PORT_2_CLK: return "PORT_2_CLK";
+		case DMUX0_OFF: return "DMUX0_OFF";
+		case DMUX0_ON: return "DMUX0_ON";
+		case PORT_3_IN: return "PORT_3_IN";
+		case DMUX1_OFF: return "DMUX1_OFF";
+		case DMUX1_ON: return "DMUX1_ON";
+		case LED_CLK: return "LED_CLK";
+		case DISP_SEQ_CLK: return "DISP_SEQ_CLK";
+		case ATTN_CLK: return "ATTN_CLK";
+		case CH2_PA_CLK: return "CH2_PA_CLK";
+		case CH1_PA_CLK: return "CH1_PA_CLK";
+		case B_SWP_CLK: return "B_SWP_CLK";
+		case A_SWP_CLK: return "A_SWP_CLK";
+		case B_TRIG_CLK: return "B_TRIG_CLK";
+		case A_TRIG_CLK: return "A_TRIG_CLK";
+		case TRIG_STAT_STRB: return "TRIG_STAT_STRB";
+	}
+}
+
+// static
+tek2465_state::IOPort tek2465_state::get_io_port(offs_t offset) {
 	switch (offset >> 6) {
-		case 0:
-			name = "UNUSED";
-			break;
-		case 1:
-			name = "DAC_MSB_CLK";
-			break;
-		case 2:
-			name = "DAC_LSB_CLK";
-			break;
-		case 3:
-			name = "PORT_1_CLK";
-			break;
-		case 4:
-			name = "ROS_1_CLK";
-			break;
-		case 5:
-			name = "ROS_2_CLK";
-			break;
-		case 6:
-			name = "PORT_2_CLK";
-			break;
+		case 0: return UNUSED;
+		case 1: return DAC_MSB_CLK;
+		case 2: return DAC_LSB_CLK;
+		case 3: return PORT_1_CLK;
+		case 4: return ROS_1_CLK;
+		case 5: return ROS_2_CLK;
+		case 6: return PORT_2_CLK;
 		case 7:
 			switch (offset & 0xF) {
-				case 0: return "UNUSED(fine)";
-				case 1: return "DMUX0_OFF";
-				case 2: return "DMUX0_ON";
-				case 3: return "PORT_3_IN";
-				case 4: return "DMUX1_OFF";
-				case 5: return "DMUX1_ON";
-				case 6: return "LED_CLK";
-				case 7: return "DISP_SEQ_CLK";
-				case 8: return "ATTN_CLK";
-				case 9: return "CH2_PA_CLK";
-				case 10: return "CH1_PA_CLK";
-				case 11: return "B_SWP_CLK";
-				case 12: return "A_SWP_CLK";
-				case 13: return "B_TRIG_CLK";
-				case 14: return "A_TRIG_CLK";
-				case 15: return "TRIG_STAT_STRB";
+				case 0: return UNUSED;
+				case 1: return DMUX0_OFF;
+				case 2: return DMUX0_ON;
+				case 3: return PORT_3_IN;
+				case 4: return DMUX1_OFF;
+				case 5: return DMUX1_ON;
+				case 6: return LED_CLK;
+				case 7: return DISP_SEQ_CLK;
+				case 8: return ATTN_CLK;
+				case 9: return CH2_PA_CLK;
+				case 10: return CH1_PA_CLK;
+				case 11: return B_SWP_CLK;
+				case 12: return A_SWP_CLK;
+				case 13: return B_TRIG_CLK;
+				case 14: return A_TRIG_CLK;
+				case 15: return TRIG_STAT_STRB;
 			}
+        default: return UNUSED;
 	}
-
-	if (index == 0)
-		return name;
-
-	char buf[128];
-	snprintf(buf, sizeof(buf), "%s+0x%02X", name, index);
-
-	return buf;
-
 }
 
 ROM_START(tek2465)
