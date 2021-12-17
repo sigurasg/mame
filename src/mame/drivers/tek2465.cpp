@@ -11,24 +11,7 @@
 #include "emu.h"
 
 #include "cpu/m6800/m6800.h"
-#include "machine/ram.h"
-
-class tek2465_io_device : public device_t {
-public:
-	tek2465_io_device(const machine_config& mconfig, const char* tab, device_t* owner, uint32_t clock);
-
-	// Register access
-	void write(offs_t offset, uint8_t data);
-	uint8_t read(offs_t offset);
-
-	void device_start() override;
-
-private:
-    static std::string get_port_name(offs_t offset);
-	// uint32_t    m_front_panel_leds;
-};
-
-DECLARE_DEVICE_TYPE(TEK2465IO, tek2465_io_device)
+#include "machine/er1400.h"
 
 class tek2465_state : public driver_device
 {
@@ -41,97 +24,24 @@ public:
 private:
 	void tek2465_map(address_map& map);
 
+	static std::string get_io_port_name(offs_t offset);
+    // IO port accesses.
+	void io_write(offs_t offset, uint8_t data);
+	uint8_t io_read(offs_t offset);
+
 	required_device<cpu_device> m_maincpu;
-	required_device<tek2465_io_device> m_io_device;
-
-	// TODO(siggi): IO region device!
+	required_device<er1400_device> m_earom;
 };
-
-DEFINE_DEVICE_TYPE(TEK2465IO, tek2465_io_device, "tek2465_io", "Tektronix 2465 IO Device")
-
-tek2465_io_device::tek2465_io_device(const machine_config& mconfig, const char* tag, device_t* owner, uint32_t clock) :
-	device_t(mconfig, TEK2465IO, tag, owner, clock) {
-}
-
-void tek2465_io_device::write(offs_t offset, uint8_t data) {
-	logerror("Write 0x%02x to %s\n", data, get_port_name(offset).c_str());
-}
-
-uint8_t tek2465_io_device::read(offs_t offset) {
-	logerror("Read from %s\n", get_port_name(offset).c_str());
-	return 0x01;
-}
-
-void tek2465_io_device::device_start() {
-	// TODO(siggi): Writeme.
-}
-
-// static
-std::string tek2465_io_device::get_port_name(offs_t offset) {
-    offs_t index = offset & 0x3F;
-    const char* name = nullptr;
-    switch (offset >> 6) {
-        case 0:
-            name = "UNUSED";
-            break;
-        case 1:
-            name = "DAC_MSB_CLK";
-            break;
-        case 2:
-            name = "DAC_LSB_CLK";
-            break;
-        case 3:
-            name = "PORT_1_CLK";
-            break;
-        case 4:
-            name = "ROS_1_CLK";
-            break;
-        case 5:
-            name = "ROS_2_CLK";
-            break;
-        case 6:
-            name = "PORT_2_CLK";
-            break;
-        case 7:
-            switch (offset & 0xF) {
-                case 0: return "UNUSED(fine)";
-                case 1: return "DMUX0_OFF";
-                case 2: return "DMUX0_ON";
-                case 3: return "PORT_3_IN";
-                case 4: return "DMUX1_OFF";
-                case 5: return "DMUX1_ON";
-                case 6: return "LED_CLK";
-                case 7: return "DISP_SEQ_CLK";
-                case 8: return "ATTN_CLK";
-                case 9: return "CH2_PA_CLK";
-                case 10: return "CH1_PA_CLK";
-                case 11: return "B_SWP_CLK";
-                case 12: return "A_SWP_CLK";
-                case 13: return "B_TRIG_CLK";
-                case 14: return "A_TRIG_CLK";
-                case 15: return "TRIG_STAT_STRB";
-            }
-    }
-
-    if (index == 0)
-        return name;
-
-    char buf[128];
-    snprintf(buf, sizeof(buf), "%s+0x%02X", name, index);
-
-    return buf;
-
-}
 
 tek2465_state::tek2465_state(const machine_config& config, device_type type, const char* tag) :
 	driver_device(config, type, tag),
 	m_maincpu(*this, "maincpu"),
-	m_io_device(*this, "io") {
+	m_earom(*this, "earom") {
 }
 
 void tek2465_state::tek2465(machine_config& config) {
 	M6808(config, m_maincpu, 5_MHz_XTAL);
-	TEK2465IO(config, m_io_device, 5_MHz_XTAL);
+	ER1400(config, m_earom, 5_MHz_XTAL);
 	m_maincpu->set_addrmap(AS_PROGRAM, &tek2465_state::tek2465_map);
 }
 
@@ -144,7 +54,7 @@ void tek2465_state::tek2465_map(address_map& map) {
 	map(0x0000, 0x07FF).ram();
 
 	// IO Registers.
-	map(0x0800, 0x09FF).rw(m_io_device, FUNC(tek2465_io_device::read), FUNC(tek2465_io_device::write)).mirror(0x600);
+	map(0x0800, 0x09FF).rw(FUNC(tek2465_state::io_read), FUNC(tek2465_state::io_write)).mirror(0x600);
 
 	// TODO(siggi): Options from 0x1000-0x7FFF.
 	map(0x1000, 0x7FFF).unmaprw();
@@ -154,6 +64,72 @@ void tek2465_state::tek2465_map(address_map& map) {
 	// Unmapped addresses are pinned to the NOP code.
 	// Sadly MAME doesn't allow that, the only undefined
 	// values allowed are 0xFF or 0x00.
+}
+
+void tek2465_state::io_write(offs_t offset, uint8_t data) {
+	logerror("Write 0x%02x to %s\n", data, get_io_port_name(offset).c_str());
+}
+
+uint8_t tek2465_state::io_read(offs_t offset) {
+	logerror("Read from %s\n", get_io_port_name(offset).c_str());
+	return 0x01;
+}
+
+// static
+std::string tek2465_state::get_io_port_name(offs_t offset) {
+	offs_t index = offset & 0x3F;
+	const char* name = nullptr;
+	switch (offset >> 6) {
+		case 0:
+			name = "UNUSED";
+			break;
+		case 1:
+			name = "DAC_MSB_CLK";
+			break;
+		case 2:
+			name = "DAC_LSB_CLK";
+			break;
+		case 3:
+			name = "PORT_1_CLK";
+			break;
+		case 4:
+			name = "ROS_1_CLK";
+			break;
+		case 5:
+			name = "ROS_2_CLK";
+			break;
+		case 6:
+			name = "PORT_2_CLK";
+			break;
+		case 7:
+			switch (offset & 0xF) {
+				case 0: return "UNUSED(fine)";
+				case 1: return "DMUX0_OFF";
+				case 2: return "DMUX0_ON";
+				case 3: return "PORT_3_IN";
+				case 4: return "DMUX1_OFF";
+				case 5: return "DMUX1_ON";
+				case 6: return "LED_CLK";
+				case 7: return "DISP_SEQ_CLK";
+				case 8: return "ATTN_CLK";
+				case 9: return "CH2_PA_CLK";
+				case 10: return "CH1_PA_CLK";
+				case 11: return "B_SWP_CLK";
+				case 12: return "A_SWP_CLK";
+				case 13: return "B_TRIG_CLK";
+				case 14: return "A_TRIG_CLK";
+				case 15: return "TRIG_STAT_STRB";
+			}
+	}
+
+	if (index == 0)
+		return name;
+
+	char buf[128];
+	snprintf(buf, sizeof(buf), "%s+0x%02X", name, index);
+
+	return buf;
+
 }
 
 ROM_START(tek2465)
