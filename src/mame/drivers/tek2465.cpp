@@ -11,6 +11,8 @@
 #include "cpu/m6800/m6800.h"
 #include "machine/er1400.h"
 
+#include "tek2465.lh"
+
 class tek2465_state : public driver_device
 {
 public:
@@ -56,6 +58,18 @@ private:
 
 	required_device<cpu_device> m_maincpu;
 	required_device<er1400_device> m_earom;
+
+	uint8_t m_port_1 = 0;
+	uint8_t m_port_2 = 0;
+	uint32_t m_front_panel_leds = 0;
+	uint16_t m_dac = 0;
+
+	uint16_t m_ros_1 = 0;
+
+	uint8_t m_ros_2_shift = 0;
+	uint8_t m_ros_2_latch = 0;
+
+	uint8_t m_ros_ram[64] = { 0xFF };
 };
 
 tek2465_state::tek2465_state(const machine_config& config, device_type type, const char* tag) :
@@ -71,7 +85,15 @@ void tek2465_state::tek2465(machine_config& config) {
 }
 
 void tek2465_state::init_tek2465() {
-	// TODO(siggi): Writeme.
+	save_item(NAME(m_port_1));
+	save_item(NAME(m_port_2));
+	save_item(NAME(m_front_panel_leds));
+	save_item(NAME(m_dac));
+
+	save_item(NAME(m_ros_1));
+	save_item(NAME(m_ros_2_shift));
+	save_item(NAME(m_ros_2_latch));
+	save_item(NAME(m_ros_ram));
 }
 
 void tek2465_state::tek2465_map(address_map& map) {
@@ -95,12 +117,55 @@ void tek2465_state::io_write(offs_t offset, uint8_t data) {
 	IOPort io_port = get_io_port(offset);
 	switch (io_port) {
 		case PORT_1_CLK:
+			m_port_1 = data & 0x3F;
 			m_earom->c1_w(BIT(data, 0));
 			m_earom->c2_w(BIT(data, 1));
 			m_earom->c3_w(BIT(data, 2));
 			m_earom->clock_w(BIT(data, 3));
 			m_earom->data_w(BIT(data, 4));
 			break;
+
+		case PORT_2_CLK:
+			m_port_2 = data & 0x3F;
+			break;
+
+		case DAC_LSB_CLK:
+			m_dac = (m_dac & 0xFF00) | data;
+			break;
+
+		case DAC_MSB_CLK:
+			m_dac = (m_dac & 0x00FF) | (static_cast<uint16_t>(data) << 8);
+			break;
+
+		case ROS_1_CLK:
+			m_ros_2_latch = m_ros_2_shift;
+			{
+				uint8_t hi = m_ros_1 >> 8;
+				uint8_t lo = m_ros_1;
+
+				if (!BIT(m_ros_2_latch, 2)) {
+					hi <<= 1;
+					hi |= lo >> 7;
+				}
+				lo <<= 1;
+				lo |= BIT(data, 0);
+
+				m_ros_1 = (static_cast<uint16_t>(hi) << 8) | lo;
+			}
+
+			// On a write with the mode set right, write through to the
+			// character RAM.
+			if (!BIT(m_ros_2_latch, 3)) {
+				m_ros_ram[(m_ros_1 >> 1) & 0x7F] = m_ros_1 >> 8;
+			}
+			break;
+
+		case ROS_2_CLK:
+			m_ros_2_shift <<= 1;
+			m_ros_2_shift |= BIT(data, 0);
+			break;
+
+
 		default:
 			break;
 	}
@@ -113,7 +178,14 @@ uint8_t tek2465_state::io_read(offs_t offset) {
 	uint8_t read_value = 0x01;
 	switch (io_port) {
 		case PORT_3_IN:
-			read_value = (m_earom->data_r() << 4);
+			read_value = m_earom->data_r() << 4;
+			break;
+		case LED_CLK:
+			m_front_panel_leds <<= 1;
+			m_front_panel_leds |= BIT(m_port_2, 0);
+			break;
+		case ROS_1_CLK:
+			m_ros_2_latch = m_ros_2_shift;
 			break;
 		default:
 			break;
@@ -190,9 +262,13 @@ ROM_START(tek2465)
 	ROM_LOAD("160-1627-11.bin", 0x2000, 0x2000, CRC(e6707bf1))
 	ROM_LOAD("160-1626-11.bin", 0x4000, 0x2000, CRC(f976700f))
 	ROM_LOAD("160-1625-11.bin", 0x6000, 0x2000, CRC(187bfa89))
+	// Default EAROM contents.
+	// TODO(siggi): Find valid EAROM contents.
+	ROM_REGION16_BE(200, "earom", 0)
+	ROM_LOAD16_WORD("earom.bin", 0, 200, CRC(ed086180))
 ROM_END
 
 INPUT_PORTS_START(tek2465)
 INPUT_PORTS_END
 
-COMP(1984, tek2465, 0, 0, tek2465, tek2465, tek2465_state, init_tek2465, "Tektronix", "Tektronix 2465", MACHINE_NO_SOUND);
+GAMEL(1984, tek2465, 0, tek2465, tek2465, tek2465_state, init_tek2465, ROT0, "Tektronix", "Tektronix 2465", MACHINE_NO_SOUND, layout_tek2465);
