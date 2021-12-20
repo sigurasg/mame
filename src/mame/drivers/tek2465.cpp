@@ -11,6 +11,10 @@
 #include "cpu/m6800/m6800.h"
 #include "machine/er1400.h"
 
+#include "debug/debugcon.h"
+#include "debug/debugcmd.h"
+#include "debugger.h"
+
 #include "tek2465.lh"
 
 class tek2465_state : public driver_device
@@ -21,6 +25,9 @@ public:
 	void tek2465(machine_config& config);
 
 private:
+	void debug_init();
+	void debug_commands(const std::vector<std::string> &params);
+
 	void device_start() override;
 
 	enum IOPort {
@@ -67,16 +74,38 @@ private:
 	required_device<er1400_device> m_earom;
 	emu_timer* m_irq_timer;
 
+	// Value of the most recent write to port 1.
 	uint8_t m_port_1 = 0;
+	// Value of the most recent write to port 2.
 	uint8_t m_port_2 = 0;
+	// Current value of the LED shift register chain. 
 	uint32_t m_front_panel_leds = 0;
+
+	// Current DAC value (MSB+LSB).
 	uint16_t m_dac = 0;
 
+	//////////////////////////////////////////////////////////////////////
+	// Display sequencer state.
+	//////////////////////////////////////////////////////////////////////
+	// The current value of the DS shift register.
+	// Only the bottom 55 bits are used.
+	uint64_t m_ds_shift = 0;
+	// The trigger status strobe. Maybe two bits?
+	// TODO(siggi): implement.
+	// uint8_t m_ds_tss = 0;
+
+	//////////////////////////////////////////////////////////////////////
+	// Readout state.
+	//////////////////////////////////////////////////////////////////////
+	// Current value of the ROS1 shift register.
 	uint16_t m_ros_1 = 0;
 
+	// Current value of the ROS2 shift register.
 	uint8_t m_ros_2_shift = 0;
+	// The most recently latched value from above.
 	uint8_t m_ros_2_latch = 0;
 
+	// The readout RAM contents.
 	uint8_t m_ros_ram[64] = { 0xFF };
 };
 
@@ -92,11 +121,35 @@ void tek2465_state::tek2465(machine_config& config) {
 	m_maincpu->set_addrmap(AS_PROGRAM, &tek2465_state::tek2465_map);
 }
 
+void tek2465_state::debug_init() {
+	if (machine().debug_flags & DEBUG_FLAG_ENABLED)
+	{
+		using namespace std::placeholders;
+		machine().debugger().console().register_command("tek", CMDFLAG_CUSTOM_HELP, 0, 0, std::bind(&tek2465_state::debug_commands, this, _1));
+	}
+}
+
+void tek2465_state::debug_commands(const std::vector<std::string> &params) {
+	debugger_console &con = machine().debugger().console();
+
+	con.printf("PORT1: 0x%02X\n", m_port_1);
+	con.printf("PORT2: 0x%02X\n", m_port_2);
+	con.printf("LEDs: 0x%04X\n", m_front_panel_leds);
+	con.printf("DAC: 0x%02X\n", m_dac);
+	con.printf("DS SHIFT: 0x%08X\n", m_ds_shift);
+
+	con.printf("Next IRQ: %ss\n", m_irq_timer->remaining().to_string().c_str());
+}
+
 void tek2465_state::device_start() {
+	debug_init();
+
 	save_item(NAME(m_port_1));
 	save_item(NAME(m_port_2));
 	save_item(NAME(m_front_panel_leds));
 	save_item(NAME(m_dac));
+
+	save_item(NAME(m_ds_shift));
 
 	save_item(NAME(m_ros_1));
 	save_item(NAME(m_ros_2_shift));
@@ -191,7 +244,7 @@ void tek2465_state::io_write(offs_t offset, uint8_t data) {
 			break;
 	}
 
-	logerror("Write 0x%02x to %s\n", data, get_io_port_name(io_port));
+	// logerror("Write 0x%02x to %s\n", data, get_io_port_name(io_port));
 }
 
 uint8_t tek2465_state::io_read(offs_t offset) {
@@ -199,20 +252,27 @@ uint8_t tek2465_state::io_read(offs_t offset) {
 	uint8_t read_value = 0x01;
 	switch (io_port) {
 		case PORT_3_IN:
-			read_value = m_earom->data_r() << 4;
+			read_value = 0x01; // TODO(siggi): Implement TSO.
+			read_value |= m_earom->data_r() << 4;
 			break;
 		case LED_CLK:
+			// TODO(siggi): This should also happen on write.
 			m_front_panel_leds <<= 1;
 			m_front_panel_leds |= BIT(m_port_2, 0);
 			break;
 		case ROS_1_CLK:
 			m_ros_2_latch = m_ros_2_shift;
 			break;
+		case DISP_SEQ_CLK:
+			// TODO(siggi): This should also happen on write.
+			m_ds_shift >>= 1;
+			m_ds_shift |= static_cast<uint64_t>(BIT(m_port_2, 0)) << 55;
+			break;
 		default:
 			break;
 	}
 
-	logerror("Read 0x%02X from %s\n", read_value, get_io_port_name(io_port));
+	// logerror("Read 0x%02X from %s\n", read_value, get_io_port_name(io_port));
 	return read_value;
 }
 
