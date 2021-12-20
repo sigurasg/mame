@@ -19,7 +19,6 @@ public:
 	tek2465_state(const machine_config& config, device_type type, const char* tag);
 
 	void tek2465(machine_config& config);
-	void init_tek2465();
 
 private:
 	void device_start() override;
@@ -91,9 +90,6 @@ void tek2465_state::tek2465(machine_config& config) {
 	M6808(config, m_maincpu, 5_MHz_XTAL);
 	ER1400(config, m_earom, 5_MHz_XTAL);
 	m_maincpu->set_addrmap(AS_PROGRAM, &tek2465_state::tek2465_map);
-}
-
-void tek2465_state::init_tek2465() {
 }
 
 void tek2465_state::device_start() {
@@ -301,4 +297,4 @@ ROM_END
 INPUT_PORTS_START(tek2465)
 INPUT_PORTS_END
 
-GAMEL(1984, tek2465, 0, tek2465, tek2465, tek2465_state, init_tek2465, ROT0, "Tektronix", "Tektronix 2465", MACHINE_NO_SOUND, layout_tek2465);
+GAMEL(1984, tek2465, 0, tek2465, tek2465, tek2465_state, empty_init, ROT0, "Tektronix", "Tektronix 2465", MACHINE_NO_SOUND, layout_tek2465);
