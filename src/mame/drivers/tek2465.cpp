@@ -22,7 +22,9 @@ public:
 	void init_tek2465();
 
 private:
-    enum IOPort {
+	void device_start() override;
+
+	enum IOPort {
 		UNUSED,
 		DAC_MSB_CLK,
 		DAC_LSB_CLK,
@@ -45,19 +47,26 @@ private:
 		B_TRIG_CLK,
 		A_TRIG_CLK,
 		TRIG_STAT_STRB,
-    };
+	};
+
+	enum {
+		IRQ_TIMER,
+	};
 
 	void tek2465_map(address_map& map);
 
 	static IOPort get_io_port(offs_t offset);
 	static const char* get_io_port_name(IOPort io_port);
 
-    // IO port accesses.
+	// IO port accesses.
 	void io_write(offs_t offset, uint8_t data);
 	uint8_t io_read(offs_t offset);
 
+	void device_timer(emu_timer &timer, device_timer_id id, int param, void *ptr) override;
+
 	required_device<cpu_device> m_maincpu;
 	required_device<er1400_device> m_earom;
+	emu_timer* m_irq_timer;
 
 	uint8_t m_port_1 = 0;
 	uint8_t m_port_2 = 0;
@@ -85,6 +94,9 @@ void tek2465_state::tek2465(machine_config& config) {
 }
 
 void tek2465_state::init_tek2465() {
+}
+
+void tek2465_state::device_start() {
 	save_item(NAME(m_port_1));
 	save_item(NAME(m_port_2));
 	save_item(NAME(m_front_panel_leds));
@@ -94,6 +106,10 @@ void tek2465_state::init_tek2465() {
 	save_item(NAME(m_ros_2_shift));
 	save_item(NAME(m_ros_2_latch));
 	save_item(NAME(m_ros_ram));
+
+	m_irq_timer = timer_alloc(IRQ_TIMER);
+	// TODO(siggi): Does the counter start at an arbitrary count?
+	m_irq_timer->adjust(attotime::from_usec(3300));
 }
 
 void tek2465_state::tek2465_map(address_map& map) {
@@ -134,6 +150,16 @@ void tek2465_state::io_write(offs_t offset, uint8_t data) {
 			break;
 
 		case DAC_MSB_CLK:
+			if (BIT(data, 7)) {
+				// If the bit is high, the timer is reset and the IRQ is cleared.
+				m_irq_timer->reset();
+				m_maincpu->set_input_line(M6800_IRQ_LINE, CLEAR_LINE);
+			} else if (BIT(m_dac, 15)) {
+				// On toggle from high to low, set the timer.
+				// We approximate the frequency to 3.3ms.
+				// TODO(siggi): Make this right.
+				m_irq_timer->adjust(attotime::from_usec(3300));
+			}
 			m_dac = (m_dac & 0x00FF) | (static_cast<uint16_t>(data) << 8);
 			break;
 
@@ -165,7 +191,6 @@ void tek2465_state::io_write(offs_t offset, uint8_t data) {
 			m_ros_2_shift |= BIT(data, 0);
 			break;
 
-
 		default:
 			break;
 	}
@@ -193,6 +218,11 @@ uint8_t tek2465_state::io_read(offs_t offset) {
 
 	logerror("Read 0x%02X from %s\n", read_value, get_io_port_name(io_port));
 	return read_value;
+}
+
+void tek2465_state::device_timer(emu_timer &timer, device_timer_id id, int param, void *ptr) {
+	if (id == IRQ_TIMER)
+		m_maincpu->set_input_line(M6800_IRQ_LINE, ASSERT_LINE);
 }
 
 // static
@@ -252,7 +282,7 @@ tek2465_state::IOPort tek2465_state::get_io_port(offs_t offset) {
 				case 14: return A_TRIG_CLK;
 				case 15: return TRIG_STAT_STRB;
 			}
-        default: return UNUSED;
+		default: return UNUSED;
 	}
 }
 
