@@ -17,6 +17,10 @@
 
 #include "tek2465.lh"
 
+#define VERBOSE 1
+#include "logmacro.h"
+
+
 class tek2465_state : public driver_device
 {
 public:
@@ -65,8 +69,16 @@ private:
 	static const char* get_io_port_name(IOPort io_port);
 
 	// IO port accesses.
+	// Some addresses don't care whether the MPU reads or writes them,
+	// returns true if the access was handled.
+	bool io_access(IOPort io_port);
 	void io_write(offs_t offset, uint8_t data);
 	uint8_t io_read(offs_t offset);
+
+	uint8_t port3_r();
+
+	// Returns a one-bit value from this multiplexer.
+	uint8_t u2456_r();
 
 	void device_timer(emu_timer &timer, device_timer_id id, int param, void *ptr) override;
 
@@ -83,6 +95,10 @@ private:
 
 	// Current DAC value (MSB+LSB).
 	uint16_t m_dac = 0;
+
+	// MUX disable flip flop states.
+	bool m_mux_0_disable = true; 
+	bool m_mux_1_disable = true; 
 
 	//////////////////////////////////////////////////////////////////////
 	// Display sequencer state.
@@ -134,8 +150,16 @@ void tek2465_state::debug_commands(const std::vector<std::string> &params) {
 
 	con.printf("PORT1: 0x%02X\n", m_port_1);
 	con.printf("PORT2: 0x%02X\n", m_port_2);
+	con.printf("\tLED DATA: %i\n", BIT(m_port_2, 0));
+	con.printf("\tOEACLK: %i\n", BIT(m_port_2, 1));
+	con.printf("\tATTN STRB: %i\n", BIT(m_port_2, 2));
+	con.printf("\tU2418 INH: %i\n", BIT(m_port_2, 3));
+	con.printf("\tU2408 INH: %i\n", BIT(m_port_2, 4));
+	con.printf("\tTRIG LED: %i\n", BIT(m_port_2, 5));
+	
 	con.printf("LEDs: 0x%04X\n", m_front_panel_leds);
 	con.printf("DAC: 0x%02X\n", m_dac);
+
 	con.printf("DS SHIFT: 0x%08X\n", m_ds_shift);
 
 	con.printf("Next IRQ: %ss\n", m_irq_timer->remaining().to_string().c_str());
@@ -178,8 +202,41 @@ void tek2465_state::tek2465_map(address_map& map) {
 	// values allowed are 0xFF or 0x00.
 }
 
+bool tek2465_state::io_access(IOPort io_port) {
+	switch (io_port) {
+		case LED_CLK:
+			m_front_panel_leds <<= 1;
+			m_front_panel_leds |= BIT(m_port_2, 0);
+			break;
+		case DISP_SEQ_CLK:
+			m_ds_shift >>= 1;
+			m_ds_shift |= static_cast<uint64_t>(BIT(m_port_2, 0)) << 55;
+			break;
+		case DMUX0_OFF:
+			m_mux_0_disable = true;
+			break;
+		case DMUX0_ON:
+			m_mux_0_disable = false;
+			break;
+		case DMUX1_OFF:
+			m_mux_1_disable = true;
+			break;
+		case DMUX1_ON:
+			m_mux_1_disable = false;
+			break;
+
+		default:
+			return false;
+	}
+
+	return true;
+}
+
 void tek2465_state::io_write(offs_t offset, uint8_t data) {
 	IOPort io_port = get_io_port(offset);
+	if (io_access(io_port))
+		return;
+
 	switch (io_port) {
 		case PORT_1_CLK:
 			m_port_1 = data & 0x3F;
@@ -244,36 +301,46 @@ void tek2465_state::io_write(offs_t offset, uint8_t data) {
 			break;
 	}
 
-	// logerror("Write 0x%02x to %s\n", data, get_io_port_name(io_port));
+	LOG("Write 0x%02x to %s\n", data, get_io_port_name(io_port));
 }
 
 uint8_t tek2465_state::io_read(offs_t offset) {
 	IOPort io_port = get_io_port(offset);
+	if (io_access(io_port))
+		return 0x01;
+
 	uint8_t read_value = 0x01;
 	switch (io_port) {
 		case PORT_3_IN:
-			read_value = 0x01; // TODO(siggi): Implement TSO.
-			read_value |= m_earom->data_r() << 4;
+			read_value = port3_r();
 			break;
-		case LED_CLK:
-			// TODO(siggi): This should also happen on write.
-			m_front_panel_leds <<= 1;
-			m_front_panel_leds |= BIT(m_port_2, 0);
-			break;
+
 		case ROS_1_CLK:
 			m_ros_2_latch = m_ros_2_shift;
-			break;
-		case DISP_SEQ_CLK:
-			// TODO(siggi): This should also happen on write.
-			m_ds_shift >>= 1;
-			m_ds_shift |= static_cast<uint64_t>(BIT(m_port_2, 0)) << 55;
 			break;
 		default:
 			break;
 	}
 
-	// logerror("Read 0x%02X from %s\n", read_value, get_io_port_name(io_port));
+	LOG("Read 0x%02X from %s\n", read_value, get_io_port_name(io_port));
 	return read_value;
+}
+
+uint8_t tek2465_state::port3_r() {
+	uint8_t ret = 0x01; // TODO(siggi): Implement TSO.
+	ret |= m_earom->data_r() << 4;
+	ret |= u2456_r() << 5;
+
+	return ret;
+}
+
+uint8_t tek2465_state::u2456_r() {
+	// This is the no-cal value.
+	// TODO(siggi): Hookup the FP COL signals.
+	uint8_t value = 0x80;
+
+	// Select the bit as indicated by the current m_dac value.
+	return BIT(value, BIT(m_dac, 12, 3));
 }
 
 void tek2465_state::device_timer(emu_timer &timer, device_timer_id id, int param, void *ptr) {
