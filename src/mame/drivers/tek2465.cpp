@@ -75,7 +75,27 @@ private:
 	void io_write(offs_t offset, uint8_t data);
 	uint8_t io_read(offs_t offset);
 
+	// Read/write/access IO ports.
+	void dac_msb_w(uint8_t data);
+	void dac_lsb_w(uint8_t data);
+	void port_1_w(uint8_t data);
+	void ros_1_w(uint8_t data);
+	void ros_2_w(uint8_t data);
+	void dmux_0_off_a();
+	void dmux_0_on_a();
 	uint8_t port3_r();
+	void dmux_1_off_a();
+	void dmux_1_on_a();
+	void led_a();
+	void disp_seq_a();
+	void attn_a();
+	void ch2_pa_a();
+	void ch1_pa_a();
+	void b_swp_a();
+	void a_swp_a();
+	void b_trig_a();
+	void a_trig_a();
+	void trig_stat_strb_a();
 
 	// Returns a one-bit value from this multiplexer.
 	uint8_t u2456_r();
@@ -122,7 +142,7 @@ private:
 	uint8_t m_ros_2_latch = 0;
 
 	// The readout RAM contents.
-	uint8_t m_ros_ram[64] = { 0xFF };
+	uint8_t m_ros_ram[128] = { 0xFF };
 };
 
 tek2465_state::tek2465_state(const machine_config& config, device_type type, const char* tag) :
@@ -205,24 +225,22 @@ void tek2465_state::tek2465_map(address_map& map) {
 bool tek2465_state::io_access(IOPort io_port) {
 	switch (io_port) {
 		case LED_CLK:
-			m_front_panel_leds <<= 1;
-			m_front_panel_leds |= BIT(m_port_2, 0);
+			led_a();
 			break;
 		case DISP_SEQ_CLK:
-			m_ds_shift >>= 1;
-			m_ds_shift |= static_cast<uint64_t>(BIT(m_port_2, 0)) << 55;
+			disp_seq_a();
 			break;
 		case DMUX0_OFF:
-			m_mux_0_disable = true;
+			dmux_0_off_a();
 			break;
 		case DMUX0_ON:
-			m_mux_0_disable = false;
+			dmux_0_on_a();
 			break;
 		case DMUX1_OFF:
-			m_mux_1_disable = true;
+			dmux_1_off_a();
 			break;
 		case DMUX1_ON:
-			m_mux_1_disable = false;
+			dmux_1_on_a();
 			break;
 
 		default:
@@ -239,12 +257,7 @@ void tek2465_state::io_write(offs_t offset, uint8_t data) {
 
 	switch (io_port) {
 		case PORT_1_CLK:
-			m_port_1 = data & 0x3F;
-			m_earom->c1_w(BIT(data, 0));
-			m_earom->c2_w(BIT(data, 1));
-			m_earom->c3_w(BIT(data, 2));
-			m_earom->clock_w(BIT(data, 3));
-			m_earom->data_w(BIT(data, 4));
+			port_1_w(data);
 			break;
 
 		case PORT_2_CLK:
@@ -252,49 +265,19 @@ void tek2465_state::io_write(offs_t offset, uint8_t data) {
 			break;
 
 		case DAC_LSB_CLK:
-			m_dac = (m_dac & 0xFF00) | data;
+			dac_lsb_w(data);
 			break;
 
 		case DAC_MSB_CLK:
-			if (BIT(data, 7)) {
-				// If the bit is high, the timer is reset and the IRQ is cleared.
-				m_irq_timer->reset();
-				m_maincpu->set_input_line(M6800_IRQ_LINE, CLEAR_LINE);
-			} else if (BIT(m_dac, 15)) {
-				// On toggle from high to low, set the timer.
-				// We approximate the frequency to 3.3ms.
-				// TODO(siggi): Make this right.
-				m_irq_timer->adjust(attotime::from_usec(3300));
-			}
-			m_dac = (m_dac & 0x00FF) | (static_cast<uint16_t>(data) << 8);
+			dac_msb_w(data);
 			break;
 
 		case ROS_1_CLK:
-			m_ros_2_latch = m_ros_2_shift;
-			{
-				uint8_t hi = m_ros_1 >> 8;
-				uint8_t lo = m_ros_1;
-
-				if (!BIT(m_ros_2_latch, 2)) {
-					hi <<= 1;
-					hi |= lo >> 7;
-				}
-				lo <<= 1;
-				lo |= BIT(data, 0);
-
-				m_ros_1 = (static_cast<uint16_t>(hi) << 8) | lo;
-			}
-
-			// On a write with the mode set right, write through to the
-			// character RAM.
-			if (!BIT(m_ros_2_latch, 3)) {
-				m_ros_ram[(m_ros_1 >> 1) & 0x7F] = m_ros_1 >> 8;
-			}
+			ros_1_w(data);
 			break;
 
 		case ROS_2_CLK:
-			m_ros_2_shift <<= 1;
-			m_ros_2_shift |= BIT(data, 0);
+			ros_2_w(data);
 			break;
 
 		default:
@@ -326,6 +309,68 @@ uint8_t tek2465_state::io_read(offs_t offset) {
 	return read_value;
 }
 
+void tek2465_state::dac_msb_w(uint8_t data) {
+	if (BIT(data, 7)) {
+		// If the bit is high, the timer is reset and the IRQ is cleared.
+		m_irq_timer->reset();
+		m_maincpu->set_input_line(M6800_IRQ_LINE, CLEAR_LINE);
+	} else if (BIT(m_dac, 15)) {
+		// On toggle from high to low, set the timer.
+		// We approximate the frequency to 3.3ms.
+		// TODO(siggi): Make this right.
+		m_irq_timer->adjust(attotime::from_usec(3300));
+	}
+
+	m_dac = BIT(m_dac, 8, 8) | (static_cast<uint16_t>(data) << 8);
+}
+
+void tek2465_state::dac_lsb_w(uint8_t data) {
+	m_dac = BIT(m_dac, 16, 8) | data;
+}
+
+void tek2465_state::port_1_w(uint8_t data) {
+	m_port_1 = data & 0x3F;
+	m_earom->c1_w(BIT(data, 0));
+	m_earom->c2_w(BIT(data, 1));
+	m_earom->c3_w(BIT(data, 2));
+	m_earom->clock_w(BIT(data, 3));
+	m_earom->data_w(BIT(data, 4));
+}
+
+void tek2465_state::ros_1_w(uint8_t data) {
+	m_ros_2_latch = m_ros_2_shift;
+
+	uint8_t hi = BIT(m_ros_1, 16, 8);
+	uint8_t lo = m_ros_1;
+
+	if (!BIT(m_ros_2_latch, 2)) {
+		hi <<= 1;
+		hi |= lo >> 7;
+	}
+	lo <<= 1;
+	lo |= BIT(data, 0);
+
+	m_ros_1 = (static_cast<uint16_t>(hi) << 8) | lo;
+
+	// On a write with the mode set right, write through to the
+	// character RAM.
+	if (!BIT(m_ros_2_latch, 3)) {
+		m_ros_ram[(m_ros_1 >> 1) & 0x7F] = m_ros_1 >> 8;
+	}
+}
+
+void tek2465_state::ros_2_w(uint8_t data) {
+	m_ros_2_shift <<= 1;
+	m_ros_2_shift |= BIT(data, 0);
+}
+
+void tek2465_state::dmux_0_off_a() {
+	m_mux_0_disable = true;
+}
+void tek2465_state::dmux_0_on_a() {
+	m_mux_0_disable = false;
+}
+
 uint8_t tek2465_state::port3_r() {
 	uint8_t ret = 0x01; // TODO(siggi): Implement TSO.
 	ret |= m_earom->data_r() << 4;
@@ -333,6 +378,33 @@ uint8_t tek2465_state::port3_r() {
 
 	return ret;
 }
+
+void tek2465_state::dmux_1_off_a() {
+	m_mux_1_disable = true;
+}
+void tek2465_state::dmux_1_on_a() {
+	m_mux_1_disable = false;
+}
+
+void tek2465_state::led_a() {
+	m_front_panel_leds <<= 1;
+	m_front_panel_leds |= BIT(m_port_2, 0);
+
+}
+
+void tek2465_state::disp_seq_a() {
+	m_ds_shift >>= 1;
+	m_ds_shift |= static_cast<uint64_t>(BIT(m_port_2, 0)) << 55;
+}
+
+void tek2465_state::attn_a() {}
+void tek2465_state::ch2_pa_a() {}
+void tek2465_state::ch1_pa_a() {}
+void tek2465_state::b_swp_a() {}
+void tek2465_state::a_swp_a() {}
+void tek2465_state::b_trig_a() {}
+void tek2465_state::a_trig_a() {}
+void tek2465_state::trig_stat_strb_a() {}
 
 uint8_t tek2465_state::u2456_r() {
 	// This is the no-cal value.
