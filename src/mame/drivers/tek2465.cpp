@@ -114,7 +114,7 @@ private:
 	uint32_t m_front_panel_leds = 0;
 
 	// Current DAC value (MSB+LSB).
-	uint16_t m_dac = 0;
+	PAIR16 m_dac = {};
 
 	// MUX disable flip flop states.
 	bool m_mux_0_disable = true; 
@@ -143,12 +143,18 @@ private:
 
 	// The readout RAM contents.
 	uint8_t m_ros_ram[128] = { 0xFF };
+
+	//////////////////////////////////////////////////////////////////////
+	// Front panel scanning.
+	//////////////////////////////////////////////////////////////////////
+	required_ioport_array<10> m_front_panel_rows;
 };
 
 tek2465_state::tek2465_state(const machine_config& config, device_type type, const char* tag) :
 	driver_device(config, type, tag),
 	m_maincpu(*this, "maincpu"),
-	m_earom(*this, "earom") {
+	m_earom(*this, "earom"),
+	m_front_panel_rows(*this, "ROW%u", 0) {
 }
 
 void tek2465_state::tek2465(machine_config& config) {
@@ -178,7 +184,7 @@ void tek2465_state::debug_commands(const std::vector<std::string> &params) {
 	con.printf("\tTRIG LED: %i\n", BIT(m_port_2, 5));
 	
 	con.printf("LEDs: 0x%04X\n", m_front_panel_leds);
-	con.printf("DAC: 0x%02X\n", m_dac);
+	con.printf("DAC: 0x%02X\n", m_dac.w);
 
 	con.printf("DS SHIFT: 0x%08X\n", m_ds_shift);
 
@@ -191,7 +197,7 @@ void tek2465_state::device_start() {
 	save_item(NAME(m_port_1));
 	save_item(NAME(m_port_2));
 	save_item(NAME(m_front_panel_leds));
-	save_item(NAME(m_dac));
+	save_item(NAME(m_dac.w));
 
 	save_item(NAME(m_ds_shift));
 
@@ -314,18 +320,21 @@ void tek2465_state::dac_msb_w(uint8_t data) {
 		// If the bit is high, the timer is reset and the IRQ is cleared.
 		m_irq_timer->reset();
 		m_maincpu->set_input_line(M6800_IRQ_LINE, CLEAR_LINE);
-	} else if (BIT(m_dac, 15)) {
+	} else if (BIT(m_dac.w, 15)) {
 		// On toggle from high to low, set the timer.
 		// We approximate the frequency to 3.3ms.
 		// TODO(siggi): Make this right.
 		m_irq_timer->adjust(attotime::from_usec(3300));
 	}
 
-	m_dac = BIT(m_dac, 8, 8) | (static_cast<uint16_t>(data) << 8);
+	// TODO(siggi): Assert that the timer is set anytime
+	//    bit 15 is clear.
+
+	m_dac.b.h = data;
 }
 
 void tek2465_state::dac_lsb_w(uint8_t data) {
-	m_dac = BIT(m_dac, 16, 8) | data;
+	m_dac.b.l = data;
 }
 
 void tek2465_state::port_1_w(uint8_t data) {
@@ -389,7 +398,6 @@ void tek2465_state::dmux_1_on_a() {
 void tek2465_state::led_a() {
 	m_front_panel_leds <<= 1;
 	m_front_panel_leds |= BIT(m_port_2, 0);
-
 }
 
 void tek2465_state::disp_seq_a() {
@@ -407,12 +415,28 @@ void tek2465_state::a_trig_a() {}
 void tek2465_state::trig_stat_strb_a() {}
 
 uint8_t tek2465_state::u2456_r() {
-	// This is the no-cal value.
-	// TODO(siggi): Hookup the FP COL signals.
-	uint8_t value = 0x80;
+	// Bit 0x20 is SI, which is grounded on A1.
+	uint8_t value = 0x1F;
+	size_t selected_rows = 0;
+	for (size_t i = 0; i < m_front_panel_rows.size(); ++i) {
 
-	// Select the bit as indicated by the current m_dac value.
-	return BIT(value, BIT(m_dac, 12, 3));
+		if (!BIT(m_dac.w, i)) {
+			++selected_rows;
+			value &= m_front_panel_rows[i]->read();
+		}
+	}
+
+	// This is the no-cal value for the two MSBs.
+	constexpr uint8_t kNoCal = 0x80;
+	value |= kNoCal;
+
+	if (selected_rows != 1)
+		LOG("Selected FP rows: %d\n", selected_rows);
+
+	LOG("Output value: 0x%02X\n", value);
+
+	// Select the bit as indicated by the current m_dac.w value.
+	return BIT(value, BIT(m_dac.w, 12, 3));
 }
 
 void tek2465_state::device_timer(emu_timer &timer, device_timer_id id, int param, void *ptr) {
@@ -494,6 +518,32 @@ ROM_START(tek2465)
 ROM_END
 
 INPUT_PORTS_START(tek2465)
+	// The front panel is ROW/COL scanned.
+	PORT_START("ROW0")
+	PORT_BIT( 0x3F, IP_ACTIVE_LOW, IPT_UNUSED)
+	PORT_START("ROW1")
+	PORT_BIT( 0x3F, IP_ACTIVE_LOW, IPT_UNUSED)
+	PORT_START("ROW2")
+	PORT_BIT( 0x3F, IP_ACTIVE_LOW, IPT_UNUSED)
+	PORT_START("ROW3")
+	PORT_BIT( 0x3F, IP_ACTIVE_LOW, IPT_UNUSED)
+	PORT_START("ROW4")
+	PORT_BIT( 0x3F, IP_ACTIVE_LOW, IPT_UNUSED)
+	PORT_START("ROW5")
+	PORT_BIT( 0x3F, IP_ACTIVE_LOW, IPT_UNUSED)
+	PORT_START("ROW6")
+	PORT_BIT( 0x3F, IP_ACTIVE_LOW, IPT_UNUSED)
+	PORT_START("ROW7")
+	PORT_BIT( 0x3F, IP_ACTIVE_LOW, IPT_UNUSED)
+	PORT_START("ROW8")
+	PORT_BIT( 0x3F, IP_ACTIVE_LOW, IPT_UNUSED)
+	PORT_START("ROW9")
+	PORT_BIT( 0x2F, IP_ACTIVE_LOW, IPT_UNUSED)
+	PORT_BIT( 0x10, IP_ACTIVE_LOW, IPT_KEYPAD) PORT_NAME("A_B_TRIG") PORT_CODE(KEYCODE_DEL)
+
+	// Row 10 is N/C on the FP board.
+	PORT_START("ROW10")
+	PORT_BIT( 0x3F, IP_ACTIVE_LOW, IPT_UNUSED)
 INPUT_PORTS_END
 
 GAMEL(1984, tek2465, 0, tek2465, tek2465, tek2465_state, empty_init, ROT0, "Tektronix", "Tektronix 2465", MACHINE_NO_SOUND, layout_tek2465);
