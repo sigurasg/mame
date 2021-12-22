@@ -79,6 +79,7 @@ private:
 	void dac_msb_w(uint8_t data);
 	void dac_lsb_w(uint8_t data);
 	void port_1_w(uint8_t data);
+	void ros_1_a();
 	void ros_1_w(uint8_t data);
 	void ros_2_w(uint8_t data);
 	void dmux_0_off_a();
@@ -110,15 +111,15 @@ private:
 	uint8_t m_port_1 = 0;
 	// Value of the most recent write to port 2.
 	uint8_t m_port_2 = 0;
-	// Current value of the LED shift register chain. 
+	// Current value of the LED shift register chain.
 	uint32_t m_front_panel_leds = 0;
 
 	// Current DAC value (MSB+LSB).
 	PAIR16 m_dac = {};
 
 	// MUX disable flip flop states.
-	bool m_mux_0_disable = true; 
-	bool m_mux_1_disable = true; 
+	bool m_mux_0_disable = true;
+	bool m_mux_1_disable = true;
 
 	//////////////////////////////////////////////////////////////////////
 	// Display sequencer state.
@@ -134,7 +135,7 @@ private:
 	// Readout state.
 	//////////////////////////////////////////////////////////////////////
 	// Current value of the ROS1 shift register.
-	uint16_t m_ros_1 = 0;
+	PAIR16 m_ros_1 = {};
 
 	// Current value of the ROS2 shift register.
 	uint8_t m_ros_2_shift = 0;
@@ -182,7 +183,7 @@ void tek2465_state::debug_commands(const std::vector<std::string> &params) {
 	con.printf("\tU2418 INH: %i\n", BIT(m_port_2, 3));
 	con.printf("\tU2408 INH: %i\n", BIT(m_port_2, 4));
 	con.printf("\tTRIG LED: %i\n", BIT(m_port_2, 5));
-	
+
 	con.printf("LEDs: 0x%04X\n", m_front_panel_leds);
 	con.printf("DAC: 0x%02X\n", m_dac.w);
 
@@ -201,7 +202,7 @@ void tek2465_state::device_start() {
 
 	save_item(NAME(m_ds_shift));
 
-	save_item(NAME(m_ros_1));
+	save_item(NAME(m_ros_1.w));
 	save_item(NAME(m_ros_2_shift));
 	save_item(NAME(m_ros_2_latch));
 	save_item(NAME(m_ros_ram));
@@ -290,7 +291,7 @@ void tek2465_state::io_write(offs_t offset, uint8_t data) {
 			break;
 	}
 
-	LOG("Write 0x%02x to %s\n", data, get_io_port_name(io_port));
+	LOG("Write 0x%02x to %s(0x%04X)\n", data, get_io_port_name(io_port), offset + 0x0800);
 }
 
 uint8_t tek2465_state::io_read(offs_t offset) {
@@ -305,13 +306,14 @@ uint8_t tek2465_state::io_read(offs_t offset) {
 			break;
 
 		case ROS_1_CLK:
-			m_ros_2_latch = m_ros_2_shift;
+			ros_1_a();
 			break;
+
 		default:
 			break;
 	}
 
-	LOG("Read 0x%02X from %s\n", read_value, get_io_port_name(io_port));
+	LOG("Read 0x%02X from %s(0x%04X)\n", read_value, get_io_port_name(io_port), offset + 0x0800);
 	return read_value;
 }
 
@@ -346,31 +348,38 @@ void tek2465_state::port_1_w(uint8_t data) {
 	m_earom->data_w(BIT(data, 4));
 }
 
+void tek2465_state::ros_1_a() {
+	// A ROS1 read is used to latch ROS2 shift to output.
+	ros_1_w(0x01);
+}
+
 void tek2465_state::ros_1_w(uint8_t data) {
+	// Any access to the ros_1 register latches
+	// the ros_2 shift register to the output.
 	m_ros_2_latch = m_ros_2_shift;
 
-	uint8_t hi = BIT(m_ros_1, 16, 8);
-	uint8_t lo = m_ros_1;
-
+	// Depending on the state of the ROS2 latch, either
+	// shift the full register or just the low byte.
 	if (!BIT(m_ros_2_latch, 2)) {
-		hi <<= 1;
-		hi |= lo >> 7;
+		m_ros_1.w <<= 1;
+	} else {
+		m_ros_1.b.l <<= 1;
 	}
-	lo <<= 1;
-	lo |= BIT(data, 0);
 
-	m_ros_1 = (static_cast<uint16_t>(hi) << 8) | lo;
-
-	// On a write with the mode set right, write through to the
-	// character RAM.
-	if (!BIT(m_ros_2_latch, 3)) {
-		m_ros_ram[(m_ros_1 >> 1) & 0x7F] = m_ros_1 >> 8;
-	}
+	m_ros_1.w |= BIT(data, 0);
 }
 
 void tek2465_state::ros_2_w(uint8_t data) {
 	m_ros_2_shift <<= 1;
 	m_ros_2_shift |= BIT(data, 0);
+
+	// On a write with the mode set right, write through to the
+	// character RAM.
+	if (!BIT(m_ros_2_latch, 3)) {
+		m_ros_ram[m_ros_1.b.l >> 1] = m_ros_1.b.h;
+
+		LOG("ROS write 0x%02X to 0x%02X\n", m_ros_1.b.h, m_ros_1.b.l >> 1);
+	}
 }
 
 void tek2465_state::dmux_0_off_a() {
@@ -381,7 +390,12 @@ void tek2465_state::dmux_0_on_a() {
 }
 
 uint8_t tek2465_state::port3_r() {
-	uint8_t ret = 0x01; // TODO(siggi): Implement TSO.
+	uint8_t ret = 0;
+
+	ret |= 0x01 << 0; // TODO(siggi): Implement TSO.
+	// ret |= comp_r();  // TODO(siggi): Implement comparator.
+	ret |= BIT(m_ros_1.w, 8) << 2;
+	ret |= 0x1 << 3;  // TODO(siggi): Implement RO ON.
 	ret |= m_earom->data_r() << 4;
 	ret |= u2456_r() << 5;
 
@@ -430,10 +444,12 @@ uint8_t tek2465_state::u2456_r() {
 	constexpr uint8_t kNoCal = 0x80;
 	value |= kNoCal;
 
+#if 0
 	if (selected_rows != 1)
 		LOG("Selected FP rows: %d\n", selected_rows);
 
 	LOG("Output value: 0x%02X\n", value);
+#endif
 
 	// Select the bit as indicated by the current m_dac.w value.
 	return BIT(value, BIT(m_dac.w, 12, 3));
