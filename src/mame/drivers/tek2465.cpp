@@ -98,6 +98,8 @@ private:
 	void a_trig_a();
 	void trig_stat_strb_a();
 
+	void dmux_0_update_dac();
+
 	// Returns a one-bit value from this multiplexer.
 	uint8_t u2456_r();
 
@@ -149,6 +151,18 @@ private:
 	// Front panel scanning.
 	//////////////////////////////////////////////////////////////////////
 	required_ioport_array<10> m_front_panel_rows;
+
+	//////////////////////////////////////////////////////////////////////
+	// A5 board sample and hold state.
+	//////////////////////////////////////////////////////////////////////
+	uint16_t m_neg_125_v = 0;
+	uint16_t m_a_tim_ref = 0;
+	uint16_t m_b_tim_ref = 0;
+	uint16_t m_a_trig_lvl = 0;
+	uint16_t m_b_trig_lvl = 0;
+	uint16_t m_horiz_pos = 0;
+	uint16_t m_dly_ref_0 = 0;
+	uint16_t m_dly_ref_1 = 0;
 };
 
 tek2465_state::tek2465_state(const machine_config& config, device_type type, const char* tag) :
@@ -183,8 +197,54 @@ void tek2465_state::debug_commands(const std::vector<std::string> &params) {
 	con.printf("\tU2418 INH: %i\n", BIT(m_port_2, 3));
 	con.printf("\tU2408 INH: %i\n", BIT(m_port_2, 4));
 	con.printf("\tTRIG LED: %i\n", BIT(m_port_2, 5));
-
 	con.printf("LEDs: 0x%04X\n", m_front_panel_leds);
+static const char* fp_led_names[] = {
+	"CH1_AC_CPL",
+	"CH1_GND1_CPL",
+	"CH1_DC_CPL",
+	"CH1_GND2_CPL",
+	"CH1_50_CPL",
+
+	"CH2_AC_CPL",
+	"CH2_GND1_CPL",
+	"CH2_DC1_CPL",
+	"CH2_GND2_CPL",
+	"CH2_50_CPL",
+
+	"SLOPE_NEG",
+	"READY",
+
+	"SQL_SEQ",
+	"NORM",
+	"AUTO",
+	"AUTO_LVL",
+	"RUN",
+	"TRIG",
+
+	"TRIG_DC_CPL",
+	"TRIG_NOISE_REJ_CPL",
+	"TRIG_HF_REJ_CPL",
+	"TRIG_LF_REJ_CPL",
+	"TRIG_AC_CPL",
+
+	"SLOPE_POS",
+
+	"VERT",
+	"CH1",
+	"CH2",
+	"CH3",
+	"CH4",
+	"LINE",
+
+	"UNUSED1",
+	"UNUSED2",
+};
+	static_assert(sizeof(fp_led_names)/ sizeof(fp_led_names[0]) == 32);
+	for (size_t i = 0; i < 32; ++i) {
+		if (BIT(m_front_panel_leds, i) == 0)
+			con.printf("LED: %s\n", fp_led_names[i]);
+	}
+
 	con.printf("DAC: 0x%02X\n", m_dac.w);
 
 	con.printf("DS SHIFT: 0x%08X\n", m_ds_shift);
@@ -206,6 +266,15 @@ void tek2465_state::device_start() {
 	save_item(NAME(m_ros_2_shift));
 	save_item(NAME(m_ros_2_latch));
 	save_item(NAME(m_ros_ram));
+
+	save_item(NAME(m_neg_125_v));
+	save_item(NAME(m_a_tim_ref));
+	save_item(NAME(m_b_tim_ref));
+	save_item(NAME(m_a_trig_lvl));
+	save_item(NAME(m_b_trig_lvl));
+	save_item(NAME(m_horiz_pos));
+	save_item(NAME(m_dly_ref_0));
+	save_item(NAME(m_dly_ref_1));
 
 	m_irq_timer = timer_alloc(IRQ_TIMER);
 	// TODO(siggi): Does the counter start at an arbitrary count?
@@ -333,10 +402,16 @@ void tek2465_state::dac_msb_w(uint8_t data) {
 	//    bit 15 is clear.
 
 	m_dac.b.h = data;
+
+	// Update the DMUX sample and hold.
+	dmux_0_update_dac();
 }
 
 void tek2465_state::dac_lsb_w(uint8_t data) {
 	m_dac.b.l = data;
+
+	// Update the DMUX sample and hold.
+	dmux_0_update_dac();
 }
 
 void tek2465_state::port_1_w(uint8_t data) {
@@ -358,14 +433,7 @@ void tek2465_state::ros_1_w(uint8_t data) {
 	// the ros_2 shift register to the output.
 	m_ros_2_latch = m_ros_2_shift;
 
-	// Depending on the state of the ROS2 latch, either
-	// shift the full register or just the low byte.
-	if (!BIT(m_ros_2_latch, 2)) {
-		m_ros_1.w <<= 1;
-	} else {
-		m_ros_1.b.l <<= 1;
-	}
-
+	m_ros_1.w <<= 1;
 	m_ros_1.w |= BIT(data, 0);
 }
 
@@ -373,12 +441,21 @@ void tek2465_state::ros_2_w(uint8_t data) {
 	m_ros_2_shift <<= 1;
 	m_ros_2_shift |= BIT(data, 0);
 
-	// On a write with the mode set right, write through to the
-	// character RAM.
-	if (!BIT(m_ros_2_latch, 3)) {
-		m_ros_ram[m_ros_1.b.l >> 1] = m_ros_1.b.h;
+	// The shift register address and contents are both
+	// bit-swizzled to the address & data lines.
+	uint8_t address = bitswap(m_ros_1.b.l, 1, 2, 3, 4, 5, 6, 7);
+	if (!BIT(m_ros_2_latch, 2)) {
+		// If bit 2 of the ROS2 register is set, read back the RAM
+		// contents to the upper byte of the ROS1 register.
+		m_ros_1.b.h = bitswap(m_ros_ram[address], 0, 1, 2, 3, 4, 5, 6, 7);
 
-		LOG("ROS write 0x%02X to 0x%02X\n", m_ros_1.b.h, m_ros_1.b.l >> 1);
+		LOG("ROS read 0x%02X from 0x%02X\n", m_ros_ram[address], address);
+	} else if (!BIT(m_ros_2_latch, 3)) {
+		// On a write with the mode set right, write through to the
+		// character RAM.
+		m_ros_ram[address] = bitswap(m_ros_1.b.h, 0, 1, 2, 3, 4, 5, 6, 7);
+
+		LOG("ROS write 0x%02X to 0x%02X\n", m_ros_ram[address], address);
 	}
 }
 
@@ -387,6 +464,8 @@ void tek2465_state::dmux_0_off_a() {
 }
 void tek2465_state::dmux_0_on_a() {
 	m_mux_0_disable = false;
+
+	dmux_0_update_dac();
 }
 
 uint8_t tek2465_state::port3_r() {
@@ -394,7 +473,7 @@ uint8_t tek2465_state::port3_r() {
 
 	ret |= 0x01 << 0; // TODO(siggi): Implement TSO.
 	// ret |= comp_r();  // TODO(siggi): Implement comparator.
-	ret |= BIT(m_ros_1.w, 8) << 2;
+	ret |= BIT(m_ros_1.w, 15) << 2;
 	ret |= 0x1 << 3;  // TODO(siggi): Implement RO ON.
 	ret |= m_earom->data_r() << 4;
 	ret |= u2456_r() << 5;
@@ -427,6 +506,23 @@ void tek2465_state::a_swp_a() {}
 void tek2465_state::b_trig_a() {}
 void tek2465_state::a_trig_a() {}
 void tek2465_state::trig_stat_strb_a() {}
+
+void tek2465_state::dmux_0_update_dac() {
+	if (m_mux_0_disable)
+		return;
+
+	uint16_t value = BIT(m_dac.w, 0, 12);
+	switch (BIT(m_dac.b.h, 4,3)) {
+		case 0: m_neg_125_v = value; break;
+		case 1: m_a_tim_ref = value; break;
+		case 2: m_b_tim_ref = value; break;
+		case 3: m_a_trig_lvl = value; break;
+		case 4: m_b_trig_lvl = value; break;
+		case 5: m_horiz_pos = value; break;
+		case 6: m_dly_ref_0 = value; break;
+		case 7: m_dly_ref_1 = value; break;
+	}
+}
 
 uint8_t tek2465_state::u2456_r() {
 	// Bit 0x20 is SI, which is grounded on A1.
