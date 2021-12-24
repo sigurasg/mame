@@ -11,6 +11,9 @@
 #include "cpu/m6800/m6800.h"
 #include "machine/er1400.h"
 
+#include "emupal.h"
+#include "screen.h"
+
 #include "debug/debugcon.h"
 #include "debug/debugcmd.h"
 #include "debugger.h"
@@ -105,6 +108,9 @@ private:
 
 	void device_timer(emu_timer &timer, device_timer_id id, int param, void *ptr) override;
 
+	// Temporarily displays the OSD only.
+	u32 screen_update(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &rect);
+
 	required_device<cpu_device> m_maincpu;
 	required_device<er1400_device> m_earom;
 	emu_timer* m_irq_timer;
@@ -147,6 +153,13 @@ private:
 	// The readout RAM contents.
 	uint8_t m_ros_ram[128] = { 0xFF };
 
+	// The character ROM for the OSD.
+	required_memory_region m_character_rom;
+
+	// Temporary to display the OSD only.
+	required_device<screen_device> m_screen;
+	required_device<palette_device> m_palette;
+
 	//////////////////////////////////////////////////////////////////////
 	// Front panel scanning.
 	//////////////////////////////////////////////////////////////////////
@@ -169,6 +182,9 @@ tek2465_state::tek2465_state(const machine_config& config, device_type type, con
 	driver_device(config, type, tag),
 	m_maincpu(*this, "maincpu"),
 	m_earom(*this, "earom"),
+	m_character_rom(*this, "character_rom"),
+	m_screen(*this, "screen"),
+	m_palette(*this, "palette"),
 	m_front_panel_rows(*this, "ROW%u", 0) {
 }
 
@@ -176,6 +192,15 @@ void tek2465_state::tek2465(machine_config& config) {
 	M6808(config, m_maincpu, 5_MHz_XTAL);
 	ER1400(config, m_earom, 5_MHz_XTAL);
 	m_maincpu->set_addrmap(AS_PROGRAM, &tek2465_state::tek2465_map);
+
+	SCREEN(config, m_screen, SCREEN_TYPE_RASTER);
+	m_screen->set_refresh_hz(50);
+	m_screen->set_size(32 * 8, 16 * 2);
+	m_screen->set_visarea_full();
+	m_screen->set_screen_update(FUNC(tek2465_state::screen_update));
+
+	PALETTE(config, m_palette, palette_device::MONOCHROME);
+	m_screen->set_palette(m_palette);
 }
 
 void tek2465_state::debug_init() {
@@ -556,6 +581,33 @@ void tek2465_state::device_timer(emu_timer &timer, device_timer_id id, int param
 		m_maincpu->set_input_line(M6800_IRQ_LINE, ASSERT_LINE);
 }
 
+uint32_t tek2465_state::screen_update(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &rect) {
+	// TODO(siggi): This is pretty hokey, but will do for rendering
+	//    the OSD. This needs to read the ROS2 state flags to know
+	//    whether to even render. Rendering in green with the set OSD
+	//    brightness would be nice. Also rendering in - say - 256 gray
+	//    scales, and decaying the previous contents of bitmap would be
+	//    nice. The updates should probably also be timed to the ROS
+	//    counter that also does the IRQs.
+	bitmap.fill(0);
+	for (size_t row = 0; row < 2; ++row) {
+		for (size_t col = 0; col < 32; ++col) {
+			uint8_t value = m_ros_ram[row * 32 + col];
+			uint8_t* pixel = m_character_rom->base() + value * 16;
+
+			while (*pixel & 0x80) {
+				++pixel;
+				int32_t x = col * 8 + (*pixel & 0x07);
+				// Flip the image vertically.
+				int32_t y = 32 - (row * 16 + ((*pixel & 0x7F) >> 3));
+
+				bitmap.pix(y, x) = 1;
+			}
+		}
+	}
+	return 0;
+}
+
 // static
 const char* tek2465_state::get_io_port_name(IOPort io_port) {
 	switch (io_port) {
@@ -627,6 +679,9 @@ ROM_START(tek2465)
 	// TODO(siggi): Find valid EAROM contents.
 	ROM_REGION16_BE(200, "earom", 0)
 	ROM_LOAD16_WORD("earom.bin", 0, 200, CRC(ed086180))
+
+	ROM_REGION(0x2000, "character_rom", 0)
+	ROM_LOAD("160-1631-02.bin", 0, 0x1000, CRC(a3da922b))
 ROM_END
 
 INPUT_PORTS_START(tek2465)
