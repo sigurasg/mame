@@ -121,6 +121,7 @@ private:
 	uint8_t m_port_2 = 0;
 	// Current value of the LED shift register chain.
 	uint32_t m_front_panel_leds = 0;
+	output_finder<32> m_front_panel_led_outputs;
 
 	// Current DAC value (MSB+LSB).
 	PAIR16 m_dac = {};
@@ -182,6 +183,7 @@ tek2465_state::tek2465_state(const machine_config& config, device_type type, con
 	driver_device(config, type, tag),
 	m_maincpu(*this, "maincpu"),
 	m_earom(*this, "earom"),
+	m_front_panel_led_outputs(*this, "FP_LED%u", 0U),
 	m_character_rom(*this, "character_rom"),
 	m_screen(*this, "screen"),
 	m_palette(*this, "palette"),
@@ -280,6 +282,9 @@ static const char* fp_led_names[] = {
 void tek2465_state::device_start() {
 	debug_init();
 
+	m_front_panel_led_outputs.resolve();
+
+	// TODO(siggi): More save state.
 	save_item(NAME(m_port_1));
 	save_item(NAME(m_port_2));
 	save_item(NAME(m_front_panel_leds));
@@ -516,6 +521,10 @@ void tek2465_state::dmux_1_on_a() {
 void tek2465_state::led_a() {
 	m_front_panel_leds <<= 1;
 	m_front_panel_leds |= BIT(m_port_2, 0);
+
+	// Set the LED outputs.
+	for (size_t i = 0; i < 32; ++i)
+		m_front_panel_led_outputs[i] = !BIT(m_front_panel_leds, i);
 }
 
 void tek2465_state::disp_seq_a() {
