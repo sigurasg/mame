@@ -505,7 +505,14 @@ uint8_t tek2465_state::port3_r() {
 	// ret |= comp_r();  // TODO(siggi): Implement comparator.
 	ret |= BIT(m_ros_1.w, 15) << 2;
 	ret |= 0x00 << 3;  // TODO(siggi): Implement RO ON.
-	ret |= m_earom->data_r() << 4;
+
+	// Clear the EAROM output value while reading.
+	m_earom->data_w(false);
+	// It seems the EAROM read is inverted.
+	ret |= (!m_earom->data_r()) << 4;
+	// Restore the EAROM output value.
+	m_earom->data_w(BIT(m_port_1, 4));
+
 	ret |= u2456_r() << 5;
 
 	return ret;
