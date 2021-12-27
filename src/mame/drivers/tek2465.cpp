@@ -574,6 +574,9 @@ uint8_t tek2465_state::u2456_r() {
 		if (!BIT(m_dac.w, i)) {
 			++selected_rows;
 			value &= m_front_panel_rows[i]->read();
+
+			if (i == 4)
+				LOG("ROW4=0x%02X\n", m_front_panel_rows[4]->read());
 		}
 	}
 
@@ -700,6 +703,35 @@ ROM_START(tek2465)
 	ROM_LOAD("160-1631-02.bin", 0, 0x1000, CRC(a3da922b))
 ROM_END
 
+const static ioport_value kSecDivTable[26] = {
+	0x1F,	// X/Y
+	0x1D,	// .5s/DIV
+	0x1C,	// .2s/DIV
+	0x1E,	// .1s/DIV
+	0x1A,	// 50ms/DIV
+	0x18,	// 20ms/DIV
+	0x19,	// 10ms/DIV
+	0x1B,	// 5ms/DIV
+	0x13,	// 2ms/DIV
+	0x11,	// 1ms/DIV
+	0x10,	// .5ms/DIV
+	0x12,	// .2ms/DIV
+	0x16,	// .1ms/DIV
+	0x14,	// 50us/DIV
+	0x15,	// 20us/DIV
+	0x17,	// 10us/DIV
+	0x07,	// 5us/DIV
+	0x05,	// 2us/DIV
+	0x04,	// 1us/DIV
+	0x06,	// .5us/DIV
+	0x02,	// .2us/DIV
+	0x00,	// .1us/DIV
+	0x01,	// 50ns/DIV
+	0x03,	// 20ns/DIV
+	0x0B,	// 10ns/DIV
+	0x09,	// 5ns/DIV
+};
+
 INPUT_PORTS_START(tek2465)
 	// The front panel is ROW/COL scanned.
 	PORT_START("ROW0")
@@ -711,18 +743,31 @@ INPUT_PORTS_START(tek2465)
 
 	PORT_START("ROW1")
 	PORT_BIT( 0x1F, IP_ACTIVE_LOW, IPT_UNUSED)
+
 	PORT_START("ROW2")
 	PORT_BIT( 0x1F, IP_ACTIVE_LOW, IPT_UNUSED)
+
 	PORT_START("ROW3")
 	PORT_BIT( 0x1F, IP_ACTIVE_LOW, IPT_UNUSED)
+
 	PORT_START("ROW4")
-	PORT_BIT( 0x1F, IP_ACTIVE_LOW, IPT_UNUSED)
+	// A sweep speed. This is gray-code encoded.
+	PORT_BIT( 0x1F, 0, IPT_DIAL)
+		PORT_NAME("A_SEC_DIV") PORT_POSITIONS(26)
+		PORT_REMAP_TABLE(kSecDivTable) PORT_KEYDELTA(1) PORT_SENSITIVITY(100)
+		PORT_CODE_INC(KEYCODE_Q) PORT_CODE_DEC(KEYCODE_A)
+
 	PORT_START("ROW5")
-	PORT_BIT( 0x1F, IP_ACTIVE_LOW, IPT_UNUSED)
+	// B sweep speed. This is gray-code encoded.
+	PORT_BIT( 0x1F, 0, IPT_DIAL)
+		PORT_NAME("B_SEC_DIV") PORT_POSITIONS(26)
+		PORT_REMAP_TABLE(kSecDivTable) PORT_KEYDELTA(1)
+		PORT_CODE_INC(KEYCODE_E) PORT_CODE_DEC(KEYCODE_D)
+
 	PORT_START("ROW6")
 	PORT_BIT( 0x01, IP_ACTIVE_LOW, IPT_KEYPAD ) PORT_NAME("CH_1") PORT_CODE(KEYCODE_1) PORT_TOGGLE
 	PORT_BIT( 0x02, IP_ACTIVE_LOW, IPT_KEYPAD ) PORT_NAME("CH_2") PORT_CODE(KEYCODE_2) PORT_TOGGLE
-	PORT_BIT( 0x04, IP_ACTIVE_LOW, IPT_KEYPAD ) PORT_NAME("ADD") PORT_CODE(KEYCODE_A) PORT_TOGGLE
+	PORT_BIT( 0x04, IP_ACTIVE_LOW, IPT_KEYPAD ) PORT_NAME("ADD") PORT_TOGGLE
 	PORT_BIT( 0x08, IP_ACTIVE_LOW, IPT_KEYPAD ) PORT_NAME("CH_3") PORT_CODE(KEYCODE_3) PORT_TOGGLE
 	PORT_BIT( 0x10, IP_ACTIVE_LOW, IPT_KEYPAD ) PORT_NAME("CH_4") PORT_CODE(KEYCODE_4) PORT_TOGGLE
 
