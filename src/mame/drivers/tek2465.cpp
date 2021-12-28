@@ -705,31 +705,31 @@ ROM_END
 
 const static ioport_value kSecDivTable[26] = {
 	0x1F,	// X/Y
-	0x1D,	// .5s/DIV
+	0x1E,	// .5s/DIV
 	0x1C,	// .2s/DIV
-	0x1E,	// .1s/DIV
-	0x1A,	// 50ms/DIV
+	0x1D,	// .1s/DIV
+	0x19,	// 50ms/DIV
 	0x18,	// 20ms/DIV
-	0x19,	// 10ms/DIV
+	0x1A,	// 10ms/DIV
 	0x1B,	// 5ms/DIV
 	0x13,	// 2ms/DIV
-	0x11,	// 1ms/DIV
+	0x12,	// 1ms/DIV
 	0x10,	// .5ms/DIV
-	0x12,	// .2ms/DIV
-	0x16,	// .1ms/DIV
+	0x11,	// .2ms/DIV
+	0x15,	// .1ms/DIV
 	0x14,	// 50us/DIV
-	0x15,	// 20us/DIV
+	0x16,	// 20us/DIV
 	0x17,	// 10us/DIV
 	0x07,	// 5us/DIV
-	0x05,	// 2us/DIV
+	0x06,	// 2us/DIV
 	0x04,	// 1us/DIV
-	0x06,	// .5us/DIV
-	0x02,	// .2us/DIV
+	0x05,	// .5us/DIV
+	0x01,	// .2us/DIV
 	0x00,	// .1us/DIV
-	0x01,	// 50ns/DIV
+	0x02,	// 50ns/DIV
 	0x03,	// 20ns/DIV
 	0x0B,	// 10ns/DIV
-	0x09,	// 5ns/DIV
+	0x0A,	// 5ns/DIV
 };
 
 INPUT_PORTS_START(tek2465)
@@ -752,16 +752,16 @@ INPUT_PORTS_START(tek2465)
 
 	PORT_START("ROW4")
 	// A sweep speed. This is gray-code encoded.
-	PORT_BIT( 0x1F, 0, IPT_DIAL)
-		PORT_NAME("A_SEC_DIV") PORT_POSITIONS(26)
-		PORT_REMAP_TABLE(kSecDivTable) PORT_KEYDELTA(1) PORT_SENSITIVITY(100)
+	PORT_BIT( 0x1F, 0, IPT_POSITIONAL )
+		PORT_NAME("A_SEC_DIV") PORT_POSITIONS(26) PORT_WRAPS
+		PORT_REMAP_TABLE(kSecDivTable) PORT_KEYDELTA(1) PORT_SENSITIVITY(10)
 		PORT_CODE_INC(KEYCODE_Q) PORT_CODE_DEC(KEYCODE_A)
 
 	PORT_START("ROW5")
 	// B sweep speed. This is gray-code encoded.
-	PORT_BIT( 0x1F, 0, IPT_DIAL)
-		PORT_NAME("B_SEC_DIV") PORT_POSITIONS(26)
-		PORT_REMAP_TABLE(kSecDivTable) PORT_KEYDELTA(1)
+	PORT_BIT( 0x1F, 0, IPT_POSITIONAL )
+		PORT_NAME("B_SEC_DIV") PORT_POSITIONS(26) PORT_WRAPS
+		PORT_REMAP_TABLE(kSecDivTable) PORT_KEYDELTA(1) PORT_SENSITIVITY(10)
 		PORT_CODE_INC(KEYCODE_E) PORT_CODE_DEC(KEYCODE_D)
 
 	PORT_START("ROW6")
