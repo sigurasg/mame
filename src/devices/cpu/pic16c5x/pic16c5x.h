@@ -42,6 +42,7 @@ DECLARE_DEVICE_TYPE(PIC16C57, pic16c57_device)
 DECLARE_DEVICE_TYPE(PIC16C58, pic16c58_device)
 
 DECLARE_DEVICE_TYPE(PIC1650,  pic1650_device)
+DECLARE_DEVICE_TYPE(PIC1654S, pic1654s_device)
 DECLARE_DEVICE_TYPE(PIC1655,  pic1655_device)
 
 
@@ -76,6 +77,7 @@ public:
 	void rom_10(address_map &map);
 	void rom_11(address_map &map);
 	void rom_9(address_map &map);
+
 protected:
 	// construction/destruction
 	pic16c5x_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock, int program_width, int data_width, int picmodel);
@@ -118,7 +120,7 @@ private:
 
 	/******************** CPU Internal Registers *******************/
 	uint16_t  m_PC;
-	uint16_t  m_PREVPC;     /* previous program counter */
+	uint16_t  m_PREVPC;     // previous program counter
 	uint8_t   m_W;
 	uint8_t   m_OPTION;
 	uint16_t  m_CONFIG;
@@ -128,20 +130,20 @@ private:
 	uint8_t   m_TRISB;
 	uint8_t   m_TRISC;
 	uint16_t  m_STACK[2];
-	uint16_t  m_prescaler;  /* Note: this is really an 8-bit register */
-	PAIR    m_opcode;
+	uint16_t  m_prescaler;  // Note: this is really an 8-bit register
+	PAIR      m_opcode;
 	uint8_t   *m_internalram;
 
-	int     m_icount;
-	int     m_reset_vector;
-	int     m_picmodel;
-	int     m_delay_timer;
+	int       m_icount;
+	int       m_reset_vector;
+	int       m_picmodel;
+	int       m_delay_timer;
 	uint16_t  m_temp_config;
-	int     m_rtcc;
-	bool    m_count_pending;
+	int       m_rtcc;
+	bool      m_count_pending;
 	int8_t    m_old_data;
 	uint8_t   m_picRAMmask;
-	int     m_inst_cycles;
+	int       m_inst_cycles;
 
 	memory_access<11, 1, -1, ENDIANNESS_LITTLE>::cache m_program;
 	memory_access< 7, 0,  0, ENDIANNESS_LITTLE>::specific m_data;
@@ -159,7 +161,7 @@ private:
 	// For debugger
 	int m_debugger_temp;
 
-	/* opcode table entry */
+	// opcode table entry
 	typedef void (pic16c5x_device::*pic16c5x_ophandler)();
 	struct pic16c5x_opcode
 	{
@@ -268,6 +270,17 @@ public:
 	pic1650_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
 };
 
+class pic1654s_device : public pic16c5x_device
+{
+public:
+	// construction/destruction
+	pic1654s_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
+
+protected:
+	// 1654S has a /8 clock divider instead of the typical /4
+	virtual uint64_t execute_clocks_to_cycles(uint64_t clocks) const noexcept override { return (clocks + 8 - 1) / 8; }
+	virtual uint64_t execute_cycles_to_clocks(uint64_t cycles) const noexcept override { return (cycles * 8); }
+};
 
 class pic1655_device : public pic16c5x_device
 {

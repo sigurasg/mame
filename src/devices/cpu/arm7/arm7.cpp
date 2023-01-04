@@ -32,7 +32,6 @@ TODO:
 
 #include "emu.h"
 #include "debug/debugcon.h"
-#include "debug/debugcmd.h"
 #include "debugger.h"
 #include "arm7.h"
 #include "arm7core.h"   //include arm7 core
@@ -300,6 +299,7 @@ void arm7_cpu_device::update_reg_ptr()
 void arm7_cpu_device::set_cpsr(uint32_t val)
 {
 	uint8_t old_mode = GET_CPSR & MODE_FLAG;
+	bool call_hook = false;
 	if (m_archFlags & ARCHFLAG_MODE26)
 	{
 		if ((val & 0x10) != (m_r[eCPSR] & 0x10))
@@ -315,6 +315,7 @@ void arm7_cpu_device::set_cpsr(uint32_t val)
 				// 32 -> 26
 				m_r[eR15] = (m_r[eR15] & 0x03FFFFFC) /* PC */ | (val & 0xF0000000) /* N Z C V */ | ((val & 0x000000C0) << (26 - 6)) /* I F */ | (val & 0x00000003) /* M1 M0 */;
 			}
+			call_hook = true;
 		}
 		else
 		{
@@ -329,11 +330,17 @@ void arm7_cpu_device::set_cpsr(uint32_t val)
 	{
 		val |= 0x10; // force valid mode
 	}
+	if ((val & T_MASK) != (m_r[eCPSR] & T_MASK))
+		call_hook = true;
 	m_r[eCPSR] = val;
 	if ((GET_CPSR & MODE_FLAG) != old_mode)
 	{
+		if ((GET_CPSR & MODE_FLAG) == eARM7_MODE_USER || old_mode == eARM7_MODE_USER)
+			call_hook = true;
 		update_reg_ptr();
 	}
+	if (call_hook)
+		debugger_privilege_hook();
 }
 
 
@@ -854,21 +861,21 @@ bool arm7_cpu_device::translate_vaddr_to_paddr(offs_t &vaddr, const int flags)
 	}
 }
 
-void arm7_cpu_device::translate_insn_command(const std::vector<std::string> &params)
+void arm7_cpu_device::translate_insn_command(const std::vector<std::string_view> &params)
 {
 	translate_command(params, TRANSLATE_FETCH);
 }
 
-void arm7_cpu_device::translate_data_command(const std::vector<std::string> &params)
+void arm7_cpu_device::translate_data_command(const std::vector<std::string_view> &params)
 {
 	translate_command(params, TRANSLATE_READ);
 }
 
-void arm7_cpu_device::translate_command(const std::vector<std::string> &params, int intention)
+void arm7_cpu_device::translate_command(const std::vector<std::string_view> &params, int intention)
 {
 	uint64_t vaddr;
 
-	if (!machine().debugger().commands().validate_number_parameter(params[0], vaddr)) return;
+	if (!machine().debugger().console().validate_number_parameter(params[0], vaddr)) return;
 
 	vaddr &= 0xffffffff;
 
@@ -2124,8 +2131,7 @@ uint32_t arm946es_cpu_device::arm7_cpu_read32(uint32_t addr)
 		if (addr & 3)
 		{
 			uint32_t *wp = (uint32_t *)&ITCM[(addr & ~3)&0x7fff];
-			result = *wp;
-			result = (result >> (8 * (addr & 3))) | (result << (32 - (8 * (addr & 3))));
+			result = rotr_32(*wp, 8 * (addr & 3));
 		}
 		else
 		{
@@ -2138,8 +2144,7 @@ uint32_t arm946es_cpu_device::arm7_cpu_read32(uint32_t addr)
 		if (addr & 3)
 		{
 			uint32_t *wp = (uint32_t *)&DTCM[(addr & ~3)&0x3fff];
-			result = *wp;
-			result = (result >> (8 * (addr & 3))) | (result << (32 - (8 * (addr & 3))));
+			result = rotr_32(*wp, 8 * (addr & 3));
 		}
 		else
 		{
@@ -2151,8 +2156,7 @@ uint32_t arm946es_cpu_device::arm7_cpu_read32(uint32_t addr)
 	{
 		if (addr & 3)
 		{
-			result = m_program->read_dword(addr & ~3);
-			result = (result >> (8 * (addr & 3))) | (result << (32 - (8 * (addr & 3))));
+			result = rotr_32(m_program->read_dword(addr & ~3), 8 * (addr & 3));
 		}
 		else
 		{
@@ -2322,8 +2326,7 @@ uint32_t arm7_cpu_device::arm7_cpu_read32(uint32_t addr)
 
 	if (addr & 3)
 	{
-		result = m_program->read_dword(addr & ~3);
-		result = (result >> (8 * (addr & 3))) | (result << (32 - (8 * (addr & 3))));
+		result = rotr_32(m_program->read_dword(addr & ~3), 8 * (addr & 3));
 	}
 	else
 	{

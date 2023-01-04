@@ -303,7 +303,7 @@ void scsp_device::device_clock_changed()
 	m_stream->set_sample_rate(clock() / 512);
 }
 
-void scsp_device::rom_bank_updated()
+void scsp_device::rom_bank_pre_change()
 {
 	m_stream->update();
 }
@@ -579,9 +579,9 @@ void scsp_device::init()
 	m_MidiOutR = m_MidiOutW = 0;
 
 	m_DSP.space = &this->space();
-	m_timerA = machine().scheduler().timer_alloc(timer_expired_delegate(FUNC(scsp_device::timerA_cb), this));
-	m_timerB = machine().scheduler().timer_alloc(timer_expired_delegate(FUNC(scsp_device::timerB_cb), this));
-	m_timerC = machine().scheduler().timer_alloc(timer_expired_delegate(FUNC(scsp_device::timerC_cb), this));
+	m_timerA = timer_alloc(FUNC(scsp_device::timerA_cb), this);
+	m_timerB = timer_alloc(FUNC(scsp_device::timerB_cb), this);
+	m_timerC = timer_alloc(FUNC(scsp_device::timerC_cb), this);
 
 	for (i = 0; i < 0x400; ++i)
 	{

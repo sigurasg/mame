@@ -39,6 +39,7 @@ public:
 	virtual TIMER_CALLBACK_MEMBER(vblank_timer_cb);
 
 	void set_offset(uint16_t val) { vga.crtc.offset = val; }
+	void set_vram_size(size_t vram_size) { vga.svga_intf.vram_size = vram_size; }
 
 protected:
 	enum
@@ -63,7 +64,7 @@ protected:
 	virtual void device_reset() override;
 
 	// device_palette_interface overrides
-	virtual uint32_t palette_entries() const override { return 0x100; }
+	virtual uint32_t palette_entries() const noexcept override { return 0x100; }
 
 	void vga_vh_text(bitmap_rgb32 &bitmap, const rectangle &cliprect);
 	void vga_vh_ega(bitmap_rgb32 &bitmap,  const rectangle &cliprect);
@@ -72,10 +73,11 @@ protected:
 	void vga_vh_mono(bitmap_rgb32 &bitmap, const rectangle &cliprect);
 	virtual uint8_t pc_vga_choosevideomode();
 	void recompute_params_clock(int divisor, int xtal);
-	uint8_t crtc_reg_read(uint8_t index);
+	virtual uint8_t crtc_reg_read(uint8_t index);
 	virtual void recompute_params();
-	void crtc_reg_write(uint8_t index, uint8_t data);
-	void seq_reg_write(uint8_t index, uint8_t data);
+	virtual void crtc_reg_write(uint8_t index, uint8_t data);
+	virtual uint8_t seq_reg_read(uint8_t index);
+	virtual void seq_reg_write(uint8_t index, uint8_t data);
 	uint8_t vga_vblank();
 	uint8_t vga_crtc_r(offs_t offset);
 	void vga_crtc_w(offs_t offset, uint8_t data);
@@ -122,7 +124,7 @@ protected:
 			int crtc_regcount;
 		} svga_intf;
 
-		std::vector<uint8_t> memory;
+		std::unique_ptr<uint8_t []> memory;
 		uint32_t pens[16]; /* the current 16 pens */
 
 		uint8_t miscellaneous_output;
@@ -271,6 +273,7 @@ protected:
 		uint8_t rgb24_en;
 		uint8_t rgb32_en;
 		uint8_t id;
+		bool ignore_chain4;
 	} svga;
 };
 
@@ -686,8 +689,13 @@ public:
 	virtual void port_03c0_w(offs_t offset, uint8_t data) override;
 	virtual uint8_t port_03d0_r(offs_t offset) override;
 	virtual void port_03d0_w(offs_t offset, uint8_t data) override;
-	virtual uint8_t mem_r(offs_t offset) override;
-	virtual void mem_w(offs_t offset, uint8_t data) override;
+//	virtual uint8_t mem_r(offs_t offset) override;
+//	virtual void mem_w(offs_t offset, uint8_t data) override;
+	virtual uint8_t mem_linear_r(offs_t offset) override;
+	virtual void mem_linear_w(offs_t offset,uint8_t data) override;
+
+protected:
+	virtual uint16_t offset() override;
 };
 
 

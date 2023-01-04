@@ -4,8 +4,6 @@
 #include "se3208.h"
 #include "se3208dis.h"
 
-#include "debugger.h"
-
 
 /*
     SE3208 CPU Emulator by ElSemi
@@ -1400,6 +1398,12 @@ INST(CLR)
 	m_SR&=~(1<<Imm);
 }
 
+void se3208_device::TakeExceptionVector(uint8_t vector)
+{
+	debugger_exception_hook(vector);
+	m_PC=SE3208_Read32(4*vector);
+}
+
 INST(SWI)
 {
 	uint32_t Imm=EXTRACT(Opcode,0,3);
@@ -1411,7 +1415,8 @@ INST(SWI)
 
 	CLRFLAG(FLAG_ENI|FLAG_E|FLAG_M);
 
-	m_PC=SE3208_Read32(4*Imm+0x40)-2;
+	TakeExceptionVector(Imm+0x10);
+	m_PC-=2;
 }
 
 INST(HALT)
@@ -1728,7 +1733,7 @@ void se3208_device::SE3208_NMI()
 
 	CLRFLAG(FLAG_NMI|FLAG_ENI|FLAG_E|FLAG_M);
 
-	m_PC=SE3208_Read32(4);
+	TakeExceptionVector(0x01);
 }
 
 void se3208_device::SE3208_Interrupt()
@@ -1745,9 +1750,9 @@ void se3208_device::SE3208_Interrupt()
 	CLRFLAG(FLAG_ENI|FLAG_E|FLAG_M);
 
 	if(!(TESTFLAG(FLAG_AUT)))
-		m_PC=SE3208_Read32(8);
+		TakeExceptionVector(0x02);
 	else
-		m_PC=SE3208_Read32(4*m_iackx_cb());
+		TakeExceptionVector(m_iackx_cb());
 }
 
 

@@ -204,8 +204,8 @@ mach8_device::mach8_device(const machine_config &mconfig, const char *tag, devic
 // zero everything, keep vtbls
 void vga_device::zero()
 {
-	memset(&vga.svga_intf, 0, sizeof(vga.svga_intf));
-	vga.memory.resize(0);
+	vga.svga_intf.seq_regcount = 0;
+	vga.svga_intf.crtc_regcount = 0;
 	memset(vga.pens, 0, sizeof(vga.pens));
 	vga.miscellaneous_output = 0;
 	vga.feature_control = 0;
@@ -246,8 +246,7 @@ void vga_device::device_start()
 {
 	zero();
 
-	int i;
-	for (i = 0; i < 0x100; i++)
+	for (int i = 0; i < 0x100; i++)
 		set_pen_color(i, 0, 0, 0);
 
 	// Avoid an infinite loop when displaying.  0 is not possible anyway.
@@ -258,11 +257,10 @@ void vga_device::device_start()
 	vga.read_dipswitch.set(nullptr); //read_dipswitch;
 	vga.svga_intf.seq_regcount = 0x05;
 	vga.svga_intf.crtc_regcount = 0x19;
-	vga.svga_intf.vram_size = 0x100000;
 
-	vga.memory.resize(vga.svga_intf.vram_size);
+	vga.memory = std::make_unique<uint8_t []>(vga.svga_intf.vram_size);
 	memset(&vga.memory[0], 0, vga.svga_intf.vram_size);
-	save_item(NAME(vga.memory));
+	save_pointer(NAME(vga.memory), vga.svga_intf.vram_size);
 	save_item(NAME(vga.pens));
 
 	save_item(NAME(vga.miscellaneous_output));
@@ -353,7 +351,7 @@ void vga_device::device_start()
 	save_item(NAME(vga.dac.color));
 	save_item(NAME(vga.dac.dirty));
 
-	m_vblank_timer = machine().scheduler().timer_alloc(timer_expired_delegate(FUNC(vga_device::vblank_timer_cb),this));
+	m_vblank_timer = timer_alloc(FUNC(vga_device::vblank_timer_cb), this);
 }
 
 void svga_device::device_start()
@@ -534,6 +532,12 @@ void vga_device::vga_vh_ega(bitmap_rgb32 &bitmap,  const rectangle &cliprect)
 		for (int yi=0;yi<height;yi++)
 		{
 			uint32_t *const bitmapline = &bitmap.pix(line + yi);
+			// ibm_5150:batmanmv uses this on gameplay for both EGA and "VGA" modes
+			// NB: EGA mode in that game sets 663, should be 303 like the other mode
+			// causing no status bar to appear. This is a known btanb in how VGA
+			// handles EGA mode, cfr. https://www.os2museum.com/wp/fantasyland-on-vga/
+			if((line + yi) == (vga.crtc.line_compare & 0x3ff))
+				addr = 0;
 
 			for (int pos=addr, c=0, column=0; column<EGA_COLUMNS+1; column++, c+=8, pos=(pos+1)&0xffff)
 			{
@@ -707,7 +711,7 @@ void svga_device::svga_vh_rgb8(bitmap_rgb32 &bitmap, const rectangle &cliprect)
 //      line_length = vga.crtc.offset << 4;
 //  }
 
-	uint8_t start_shift = (!(vga.sequencer.data[4] & 0x08)) ? 2 : 0;
+	uint8_t start_shift = (!(vga.sequencer.data[4] & 0x08) || svga.ignore_chain4) ? 2 : 0;
 	for (int addr = VGA_START_ADDRESS << start_shift, line=0; line<LINES; line+=height, addr+=offset(), curr_addr+=offset())
 	{
 		for (int yi = 0;yi < height; yi++)
@@ -1027,6 +1031,7 @@ uint8_t svga_device::get_video_depth()
 uint32_t vga_device::screen_update(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect)
 {
 	uint8_t cur_mode = pc_vga_choosevideomode();
+
 	switch(cur_mode)
 	{
 		case SCREEN_OFF:   bitmap.fill  (black_pen(), cliprect);break;
@@ -1700,6 +1705,12 @@ uint8_t vga_device::gc_reg_read(uint8_t index)
 	return res;
 }
 
+uint8_t vga_device::seq_reg_read(uint8_t index)
+{
+	logerror("Reading unmapped sequencer read register %02x (SVGA?)\n", index);
+	return 0;
+}
+
 uint8_t vga_device::port_03c0_r(offs_t offset)
 {
 	uint8_t data = 0xff;
@@ -1760,6 +1771,8 @@ uint8_t vga_device::port_03c0_r(offs_t offset)
 		case 5:
 			if (vga.sequencer.index < vga.svga_intf.seq_regcount)
 				data = vga.sequencer.data[vga.sequencer.index];
+			else
+				data = seq_reg_read(vga.sequencer.index);
 			break;
 
 		case 6:
@@ -2066,20 +2079,22 @@ uint8_t vga_device::mem_r(offs_t offset)
 
 		if (vga.gc.read_mode)
 		{
-			uint8_t byte,layer;
-			uint8_t fill_latch;
-			data=0;
+			// In Read Mode 1 latch is checked against this
+			// cfr. lombrall & intsocch where they RMW sprite-like objects
+			// and anything outside this formula goes transparent.
+			const u8 target_color = (vga.gc.color_compare & vga.gc.color_dont_care);
+			data = 0;
 
-			for(byte=0;byte<8;byte++)
+			for(u8 byte = 0; byte < 8; byte++)
 			{
-				fill_latch = 0;
-				for(layer=0;layer<4;layer++)
+				u8 fill_latch = 0;
+				for(u8 layer = 0; layer < 4; layer++)
 				{
 					if(vga.gc.latch[layer] & 1 << byte)
 						fill_latch |= 1 << layer;
 				}
 				fill_latch &= vga.gc.color_dont_care;
-				if(fill_latch == vga.gc.color_compare)
+				if(fill_latch == target_color)
 					data |= 1 << byte;
 			}
 		}
@@ -3280,8 +3295,12 @@ void ibm8514a_device::ibm8514_write_fg(uint32_t offset)
 		src = ibm8514.fgcolour;
 		break;
 	case 0x0040:
-		src = ibm8514.pixel_xfer;
+	{
+		// Windows 95 in svga 8bpp mode wants this (start logo, moving icons around, games etc.)
+		u32 shift_values[4] = { 0, 8, 16, 24 };
+		src = (ibm8514.pixel_xfer >> shift_values[(ibm8514.curr_x - ibm8514.prev_x) & 3]) & 0xff;
 		break;
+	}
 	case 0x0060:
 		// video memory - presume the memory is sourced from the current X/Y co-ords
 		src = m_vga->mem_linear_r(((ibm8514.curr_y * IBM8514_LINE_LENGTH) + ibm8514.curr_x));
@@ -4981,18 +5000,27 @@ void s3_vga_device::mem_w(offs_t offset, uint8_t data)
 
 /******************************************
 
-gamtor.c implementation (TODO: identify the video card)
+gamtor.cpp implementation
 
 ******************************************/
 
-uint8_t gamtor_vga_device::mem_r(offs_t offset)
+// TODO: Chips & Technologies 65550 with swapped address lines? Move to separate file regardless
+// 65550 is used by Apple PowerBook 2400c
+// 65535 is used by IBM PC-110
+
+uint8_t gamtor_vga_device::mem_linear_r(offs_t offset)
 {
+	if (!machine().side_effects_disabled())
+		logerror("Reading gamtor SVGA memory %08x\n", offset);
 	return vga.memory[offset];
 }
 
-void gamtor_vga_device::mem_w(offs_t offset, uint8_t data)
+void gamtor_vga_device::mem_linear_w(offs_t offset, uint8_t data)
 {
-	vga.memory[offset] = data;
+	if (offset & 2)
+		vga.memory[(offset >> 2) + 0x20000] = data;
+	else
+		vga.memory[(offset & 1) | (offset >> 1)] = data;
 }
 
 
@@ -5066,6 +5094,12 @@ void gamtor_vga_device::port_03d0_w(offs_t offset, uint8_t data)
 			vga_device::port_03d0_w(offset ^ 3,data);
 			break;
 	}
+}
+
+uint16_t gamtor_vga_device::offset()
+{
+	// TODO: pinpoint whatever extra register that wants this shifted by 1
+	return vga_device::offset() << 1;
 }
 
 uint16_t ati_vga_device::offset()
@@ -6621,7 +6655,6 @@ void oak_oti111_vga_device::xga_write(offs_t offset, u8 data)
 void oak_oti111_vga_device::device_start()
 {
 	svga_device::device_start();
-	vga.svga_intf.vram_size = 0x100000;
 	std::fill(std::begin(m_oak_regs), std::end(m_oak_regs), 0);
 }
 

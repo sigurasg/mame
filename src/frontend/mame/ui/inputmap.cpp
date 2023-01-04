@@ -26,6 +26,7 @@ namespace ui {
 
 menu_input_groups::menu_input_groups(mame_ui_manager &mui, render_container &container) : menu(mui, container)
 {
+	set_heading(_("Input Assignments (general)"));
 }
 
 menu_input_groups::~menu_input_groups()
@@ -49,7 +50,13 @@ void menu_input_groups::handle(event const *ev)
 {
 	// process the menu
 	if (ev && (ev->iptkey == IPT_UI_SELECT))
-		menu::stack_push<menu_input_general>(ui(), container(), int(uintptr_t(ev->itemref) - 1));
+	{
+		menu::stack_push<menu_input_general>(
+				ui(),
+				container(),
+				int(uintptr_t(ev->itemref) - 1),
+				util::string_format(_("Input Assignments (%1$s)"), ev->item->text()));
+	}
 }
 
 
@@ -58,14 +65,21 @@ void menu_input_groups::handle(event const *ev)
     input menu
 -------------------------------------------------*/
 
-menu_input_general::menu_input_general(mame_ui_manager &mui, render_container &container, int _group)
+menu_input_general::menu_input_general(mame_ui_manager &mui, render_container &container, int _group, std::string &&heading)
 	: menu_input(mui, container)
 	, group(_group)
 {
+	set_heading(std::move(heading));
 }
 
 menu_input_general::~menu_input_general()
 {
+}
+
+void menu_input_general::menu_activated()
+{
+	// scripts can change settings out from under us
+	reset(reset_options::REMEMBER_POSITION);
 }
 
 void menu_input_general::populate(float &customtop, float &custombottom)
@@ -135,10 +149,19 @@ void menu_input_general::update_input(input_item_data &seqchangeditem)
 
 menu_input_specific::menu_input_specific(mame_ui_manager &mui, render_container &container) : menu_input(mui, container)
 {
+	set_heading(_("Input Assignments (this system)"));
 }
 
 menu_input_specific::~menu_input_specific()
 {
+}
+
+void menu_input_specific::menu_activated()
+{
+	// scripts can change settings out from under us
+	assert(!pollingitem);
+	data.clear();
+	reset(reset_options::REMEMBER_POSITION);
 }
 
 void menu_input_specific::populate(float &customtop, float &custombottom)
@@ -228,7 +251,7 @@ void menu_input_specific::populate(float &customtop, float &custombottom)
 	if (!data.empty())
 		populate_sorted(customtop, custombottom);
 	else
-		item_append(_("This machine has no configurable inputs."), FLAG_DISABLE, nullptr);
+		item_append(_("[no assignable inputs are enabled]"), FLAG_DISABLE, nullptr);
 
 	item_append(menu_item_type::SEPARATOR);
 }
@@ -274,12 +297,6 @@ menu_input::~menu_input()
 {
 }
 
-void menu_input::menu_activated()
-{
-	// scripts can change settings out from under us
-	reset(reset_options::REMEMBER_POSITION);
-}
-
 
 /*-------------------------------------------------
     toggle_none_default - toggle between "NONE"
@@ -302,9 +319,9 @@ void menu_input::custom_render(void *selectedref, float top, float bottom, float
 		char const *const text[] = { seqname.c_str() };
 		draw_text_box(
 				std::begin(text), std::end(text),
-				x1, x2, y2 + ui().box_tb_border(), y2 + bottom,
+				x1, x2, y2 + tb_border(), y2 + bottom,
 				text_layout::text_justify::CENTER, text_layout::word_wrapping::NEVER, false,
-				ui().colors().text_color(), ui().colors().background_color(), 1.0f);
+				ui().colors().text_color(), ui().colors().background_color());
 	}
 	else
 	{
@@ -319,9 +336,9 @@ void menu_input::custom_render(void *selectedref, float top, float bottom, float
 			char const *const text[] = { errormsg.c_str() };
 			draw_text_box(
 					std::begin(text), std::end(text),
-					x1, x2, y2 + ui().box_tb_border(), y2 + bottom,
+					x1, x2, y2 + tb_border(), y2 + bottom,
 					text_layout::text_justify::CENTER, text_layout::word_wrapping::NEVER, false,
-					ui().colors().text_color(), UI_RED_COLOR, 1.0f);
+					ui().colors().text_color(), UI_RED_COLOR);
 		}
 		else if (selectedref)
 		{
@@ -331,9 +348,9 @@ void menu_input::custom_render(void *selectedref, float top, float bottom, float
 				char const *const text[] = { _("Pressed") };
 				draw_text_box(
 						std::begin(text), std::end(text),
-						x1, x2, y2 + ui().box_tb_border(), y2 + bottom,
+						x1, x2, y2 + tb_border(), y2 + bottom,
 						text_layout::text_justify::CENTER, text_layout::word_wrapping::NEVER, false,
-						ui().colors().text_color(), ui().colors().background_color(), 1.0f);
+						ui().colors().text_color(), ui().colors().background_color());
 			}
 			else
 			{
@@ -342,9 +359,9 @@ void menu_input::custom_render(void *selectedref, float top, float bottom, float
 					(!item.seq.empty() || item.defseq->empty()) ? clearprompt.c_str() : defaultprompt.c_str() };
 				draw_text_box(
 						std::begin(text), std::end(text),
-						x1, x2, y2 + ui().box_tb_border(), y2 + bottom,
+						x1, x2, y2 + tb_border(), y2 + bottom,
 						text_layout::text_justify::CENTER, text_layout::word_wrapping::NEVER, false,
-						ui().colors().text_color(), ui().colors().background_color(), 1.0f);
+						ui().colors().text_color(), ui().colors().background_color());
 			}
 		}
 	}
@@ -398,7 +415,7 @@ void menu_input::handle(event const *ev)
 			{
 				// entered invalid sequence - abandon change
 				invalidate = true;
-				errormsg = _("Invalid sequence entered");
+				errormsg = _("Invalid combination entered");
 				erroritem = item;
 			}
 			seq_poll.reset();
@@ -593,7 +610,7 @@ void menu_input::populate_sorted(float &customtop, float &custombottom)
 	defaultprompt = util::string_format(_("Press %1$s to restore default\n"), ui().get_general_input_setting(IPT_UI_CLEAR));
 
 	// leave space for showing the input sequence below the menu
-	custombottom = 2.0f * ui().get_line_height() + 3.0f * ui().box_tb_border();
+	custombottom = 2.0f * line_height() + 3.0f * tb_border();
 }
 
 } // namespace ui

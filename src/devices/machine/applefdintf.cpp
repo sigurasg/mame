@@ -5,6 +5,7 @@
 #include "applefdintf.h"
 #include "formats/ap2_dsk.h"
 #include "formats/ap_dsk35.h"
+#include "formats/as_dsk.h"
 #include "formats/pc_dsk.h"
 #include "formats/fs_prodos.h"
 
@@ -17,7 +18,8 @@ void applefdintf_device::formats_525_13(format_registration &fr)
 
 void applefdintf_device::formats_525(format_registration &fr)
 {
-	fr.add(FLOPPY_A216S_FORMAT);
+	fr.add(FLOPPY_A216S_DOS_FORMAT);
+	fr.add(FLOPPY_A216S_PRODOS_FORMAT);
 	fr.add(FLOPPY_RWTS18_FORMAT);
 	fr.add(FLOPPY_EDD_FORMAT);
 	fr.add(FLOPPY_WOZ_FORMAT);
@@ -29,10 +31,11 @@ void applefdintf_device::formats_35(format_registration &fr)
 	fr.add_pc_formats();
 	fr.add(FLOPPY_DC42_FORMAT);
 	fr.add(FLOPPY_WOZ_FORMAT);
+	fr.add(FLOPPY_MOOF_FORMAT);
 	fr.add(FLOPPY_APPLE_GCR_FORMAT);
 	fr.add(FLOPPY_APPLE_2MG_FORMAT);
 
-	fr.add(FS_PRODOS);
+	fr.add(fs::PRODOS);
 }
 
 void applefdintf_device::floppies_525(device_slot_interface &device)

@@ -145,7 +145,7 @@ class Opcode:
         if dtype == 0 and (am1 == "r16h" or am2 == "r16h"):
             self.mask[len(self.mask) - 1] |= 0x80
         extra_words = 0
-        if (am1 == "abs16" or am2 == "abs16" or am1 == "abs16e" or am1 == "abs24e") and self.skip == 0:
+        if (am1 == "abs16" or am2 == "abs16" or am1 == "abs16e" or am1 == "abs22e" or am1 == "abs24e") and self.skip == 0:
             extra_words += 1
         if (am1 == "abs32" or am2 == "abs32") and self.skip == 0:
             extra_words += 2
@@ -201,6 +201,8 @@ class Opcode:
             flags = "%d | STEP_OVER" % size
         elif self.name == "rts" or self.name == "rte":
             flags = "%d | STEP_OUT" % size
+        elif self.am1 == "rel8" and self.name != "bt" and self.name != "bf":
+            flags = "%d | STEP_COND" % size
         else:
             flags = "%d" % size
         

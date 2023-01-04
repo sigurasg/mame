@@ -895,7 +895,7 @@ WRITE_LINE_MEMBER( i8255_device::pc2_w )
 		else
 		{
 			// port B strobe
-			if (!m_ibf[PORT_B] && !state)
+			if (!state)
 			{
 				LOG("I8255 Port B Strobe\n");
 
@@ -915,7 +915,7 @@ WRITE_LINE_MEMBER( i8255_device::pc4_w )
 	if ((group_mode(GROUP_A) == 2) || ((group_mode(GROUP_A) == 1) && (port_mode(PORT_A) == MODE_INPUT)))
 	{
 		// port A strobe
-		if (!m_ibf[PORT_A] && !state)
+		if (!state)
 		{
 			LOG("I8255 Port A Strobe\n");
 
@@ -925,6 +925,8 @@ WRITE_LINE_MEMBER( i8255_device::pc4_w )
 			// set input buffer flag
 			set_ibf(PORT_A, 1);
 		}
+
+		set_pc_bit(4, state);
 	}
 }
 
@@ -941,6 +943,8 @@ WRITE_LINE_MEMBER( i8255_device::pc6_w )
 			// clear output buffer flag
 			set_obf(PORT_A, 1);
 		}
+
+		set_pc_bit(6, state);
 	}
 }
 

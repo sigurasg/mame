@@ -46,6 +46,7 @@ const help_item f_static_help_list[] =
 		"  Breakpoints\n"
 		"  Watchpoints\n"
 		"  Registerpoints\n"
+		"  Exception Points\n"
 		"  Expressions\n"
 		"  Comments\n"
 		"  Cheats\n"
@@ -81,6 +82,7 @@ const help_item f_static_help_list[] =
 		"  stateload[sl] <filename> -- load a state file for the current driver\n"
 		"  snap [<filename>] -- save a screen snapshot.\n"
 		"  source <filename> -- reads commands from <filename> and executes them one by one\n"
+		"  time -- prints current machine time to the console\n"
 		"  cls -- clears the console text buffer\n"
 		"  quit -- exits MAME and the debugger\n"
 	},
@@ -132,6 +134,9 @@ const help_item f_static_help_list[] =
 		"  o[ver] [<count>=1] -- single steps over <count> instructions (F10)\n"
 		"  out -- single steps until the current subroutine/exception handler is exited (Shift-F11)\n"
 		"  g[o] [<address>] -- resumes execution, sets temp breakpoint at <address> (F5)\n"
+		"  gbf [<condition>] -- resumes execution until next false branch\n"
+		"  gbt [<condition>] -- resumes execution until next true branch\n"
+		"  gn[i] [<count>] -- resumes execution, sets temp breakpoint <count> instructions ahead\n"
 		"  ge[x] [<exception>[,<condition>]] -- resumes execution, setting temp breakpoint if <exception> is raised\n"
 		"  gi[nt] [<irqline>] -- resumes execution, setting temp breakpoint if <irqline> is taken (F7)\n"
 		"  gt[ime] <milliseconds> -- resumes execution until the given delay has elapsed\n"
@@ -185,6 +190,18 @@ const help_item f_static_help_list[] =
 		"  rpdisable [<rpnum>[,...]] -- disabled given registerpoints or all if no <rpnum> specified\n"
 		"  rpenable [<rpnum>[,...]]  -- enables given registerpoints or all if no <rpnum> specified\n"
 		"  rplist [<CPU>] -- lists all the registerpoints\n"
+	},
+	{
+		"exceptionpoints",
+		"\n"
+		"Exception Point Commands\n"
+		"Type help <command> for further details on each command\n"
+		"\n"
+		"  ep[set] <type>[,<condition>[,<action>]] -- sets exception point on <type>\n"
+		"  epclear [<epnum>] -- clears a given exception point or all if no <epnum> specified\n"
+		"  epdisable [<epnum>] -- disabled a given exception point or all if no <epnum> specified\n"
+		"  epenable [<epnum>]  -- enables a given exception point or all if no <epnum> specified\n"
+		"  eplist -- lists all the registerpoints\n"
 	},
 	{
 		"expressions",
@@ -578,6 +595,13 @@ const help_item f_static_help_list[] =
 		"  Reads in debugger commands from break_and_trace.cmd and executes them.\n"
 	},
 	{
+		"time",
+		"\n"
+		"  time\n"
+		"\n"
+		"The time command prints the current machine time to the console.\n"
+	},
+	{
 		"quit",
 		"\n"
 		"  quit\n"
@@ -918,6 +942,66 @@ const help_item f_static_help_list[] =
 		"\n"
 		"g 1234\n"
 		"  Resume execution, stopping at address 1234 unless something else stops us first.\n"
+	},
+	{
+		"gbf",
+		"\n"
+		"  gbf [<condition>]\n"
+		"\n"
+		"The gbf command resumes execution of the current code.  Control will not be returned to the "
+		"debugger until a conditional branch or skip instruction tests false and falls through to the "
+		"next instruction, or the instruction that follows its delay slot.  The optional conditional "
+		"expression, if provided, will be evaluated at (not after) each conditional branch; execution "
+		"will not halt regardless of consequent program flow unless its result is true (non-zero).\n"
+		"\n"
+		"Examples:\n"
+		"\n"
+		"gbf\n"
+		"  Resume execution until the next break/watchpoint or until the next false branch.\n"
+		"\n"
+		"gbf {pc != 1234}\n"
+		"  Resume execution until the next false branch, disregarding the instruction at address 1234.\n"
+	},
+	{
+		"gbt",
+		"\n"
+		"  gbt [<condition>]\n"
+		"\n"
+		"The gbt command resumes execution of the current code.  Control will not be returned to the "
+		"debugger until a conditional branch or skip instruction tests true and program flow transfers "
+		"to any instruction other than the next one following the delay slot (if any).  The optional "
+		"conditional expression, if provided, will be evaluated at (not after) each conditional "
+		"branch; execution will not halt regardless of consequent program flow unless its result is "
+		"true (non-zero).\n"
+		"\n"
+		"Examples:\n"
+		"\n"
+		"gbt\n"
+		"  Resume execution until the next break/watchpoint or until the next true branch.\n"
+		"\n"
+		"gbt {pc != 1234}\n"
+		"  Resume execution until the next true branch, disregarding the instruction at address 1234.\n"
+	},
+	{
+		"gni",
+		"\n"
+		"  gn[i] [<count>]\n"
+		"\n"
+		"The gni command resumes execution of the current code. Control will not be returned to the "
+		"debugger until a breakpoint or watchpoint is hit, or until you manually break in using the "
+		"assigned key. Before executing, the gni command sets a temporary unconditional breakpoint "
+		"<count> instructions sequentially past the current one, which is automatically removed when "
+		"hit. If <count> is omitted, its default value is 1. If <count> is specified as zero, the "
+		"command does nothing. <count> is not permitted to exceed 512 decimal."
+		"\n"
+		"Examples:\n"
+		"\n"
+		"gni\n"
+		"  Resume execution, stopping at the address of the next instruction unless something else "
+		"stops us first.\n"
+		"\n"
+		"gni 2\n"
+		"  Resume execution, stopping at two instructions past the current one.\n"
 	},
 	{
 		"gex",
@@ -1482,6 +1566,92 @@ const help_item f_static_help_list[] =
 		"\n"
 		"The rplist command lists all the current registerpoints, along with their index and any "
 		"actions attached to them.\n"
+	},
+	{
+		"epset",
+		"\n"
+		"  ep[set] <type>[,<condition>[,<action>]]\n"
+		"\n"
+		"Sets a new exception point for exceptions of type <type> on the currently visible CPU. "
+		"The optional <condition> parameter lets you specify an expression that will be evaluated "
+		"each time the exception point is hit. If the result of the expression is true (non-zero), "
+		"the exception point will actually halt execution at the start of the exception handler; "
+		"otherwise, execution will continue with no notification. The optional <action> parameter "
+		"provides a command that is executed whenever the exception point is hit and the "
+		"<condition> is true. Note that you may need to embed the action within braces { } in order "
+		"to prevent commas and semicolons from being interpreted as applying to the epset command "
+		"itself.\n"
+		"\n"
+		"The numbering of exceptions depends upon the CPU type. Causes of exceptions may include "
+		"internally or externally vectored interrupts, errors occurring within instructions and "
+		"system calls.\n"
+		"\n"
+		"Each exception point that is set is assigned an index which can be used in other "
+		"exception point commands to reference this exception point.\n"
+		"\n"
+		"Examples:\n"
+		"\n"
+		"ep 2\n"
+		"  Set an exception that will halt execution whenever the visible CPU raises exception "
+		"number 2.\n"
+	},
+	{
+		"epclear",
+		"\n"
+		"  epclear [<epnum>[,...]]\n"
+		"\n"
+		"The epclear command clears exception points. If <epnum> is specified, only the requested "
+		"exception points are cleared, otherwise all exception points are cleared.\n"
+		"\n"
+		"Examples:\n"
+		"\n"
+		"epclear 3\n"
+		"  Clear exception point index 3.\n"
+		"\n"
+		"epclear\n"
+		"  Clear all exception points.\n"
+	},
+	{
+		"epdisable",
+		"\n"
+		"  epdisable [<epnum>[,...]]\n"
+		"\n"
+		"The epdisable command disables exception points. If <epnum> is specified, only the requested "
+		"exception points are disabled, otherwise all exception points are disabled. Note that "
+		"disabling an exception point does not delete it, it just temporarily marks the exception "
+		"point as inactive.\n"
+		"\n"
+		"Examples:\n"
+		"\n"
+		"epdisable 3\n"
+		"  Disable exception point index 3.\n"
+		"\n"
+		"epdisable\n"
+		"  Disable all exception points.\n"
+	},
+	{
+		"epenable",
+		"\n"
+		"  epenable [<epnum>[,...]]\n"
+		"\n"
+		"The epenable command enables exception points. If <epnum> is specified, only the "
+		"requested exception points are enabled, otherwise all exception points are enabled.\n"
+		"\n"
+		"Examples:\n"
+		"\n"
+		"epenable 3\n"
+		"  Enable exception point index 3.\n"
+		"\n"
+		"epenable\n"
+		"  Enable all exception points.\n"
+	},
+	{
+		"eplist",
+		"\n"
+		"  eplist\n"
+		"\n"
+		"The eplist command lists all the current exception points, along with their index and "
+		"any conditions or actions attached to them.\n"
 	},
 	{
 		"map",

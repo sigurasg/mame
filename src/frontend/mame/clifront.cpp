@@ -23,6 +23,7 @@
 #include "pluginopts.h"
 
 #include "emuopts.h"
+#include "fileio.h"
 #include "romload.h"
 #include "softlist_dev.h"
 #include "validity.h"
@@ -30,6 +31,7 @@
 
 #include "chd.h"
 #include "corestr.h"
+#include "path.h"
 #include "unzip.h"
 #include "xmlfile.h"
 
@@ -40,6 +42,7 @@
 #include <set>
 #include <tuple>
 #include <cctype>
+#include <iostream>
 
 
 //**************************************************************************
@@ -89,40 +92,40 @@ namespace {
 const options_entry cli_option_entries[] =
 {
 	/* core commands */
-	{ nullptr,                              nullptr,   OPTION_HEADER,     "CORE COMMANDS" },
-	{ CLICOMMAND_HELP           ";h;?",     "0",       OPTION_COMMAND,    "show help message" },
-	{ CLICOMMAND_VALIDATE       ";valid",   "0",       OPTION_COMMAND,    "perform validation on system drivers and devices" },
+	{ nullptr,                              nullptr,   core_options::option_type::HEADER,     "CORE COMMANDS" },
+	{ CLICOMMAND_HELP           ";h;?",     "0",       core_options::option_type::COMMAND,    "show help message" },
+	{ CLICOMMAND_VALIDATE       ";valid",   "0",       core_options::option_type::COMMAND,    "perform validation on system drivers and devices" },
 
 	/* configuration commands */
-	{ nullptr,                              nullptr,   OPTION_HEADER,     "CONFIGURATION COMMANDS" },
-	{ CLICOMMAND_CREATECONFIG   ";cc",      "0",       OPTION_COMMAND,    "create the default configuration file" },
-	{ CLICOMMAND_SHOWCONFIG     ";sc",      "0",       OPTION_COMMAND,    "display running parameters" },
-	{ CLICOMMAND_SHOWUSAGE      ";su",      "0",       OPTION_COMMAND,    "show this help" },
+	{ nullptr,                              nullptr,   core_options::option_type::HEADER,     "CONFIGURATION COMMANDS" },
+	{ CLICOMMAND_CREATECONFIG   ";cc",      "0",       core_options::option_type::COMMAND,    "create the default configuration file" },
+	{ CLICOMMAND_SHOWCONFIG     ";sc",      "0",       core_options::option_type::COMMAND,    "display running parameters" },
+	{ CLICOMMAND_SHOWUSAGE      ";su",      "0",       core_options::option_type::COMMAND,    "show this help" },
 
 	/* frontend commands */
-	{ nullptr,                              nullptr,   OPTION_HEADER,     "FRONTEND COMMANDS" },
-	{ CLICOMMAND_LISTXML        ";lx",      "0",       OPTION_COMMAND,    "all available info on driver in XML format" },
-	{ CLICOMMAND_LISTFULL       ";ll",      "0",       OPTION_COMMAND,    "short name, full name" },
-	{ CLICOMMAND_LISTSOURCE     ";ls",      "0",       OPTION_COMMAND,    "driver sourcefile" },
-	{ CLICOMMAND_LISTCLONES     ";lc",      "0",       OPTION_COMMAND,    "show clones" },
-	{ CLICOMMAND_LISTBROTHERS   ";lb",      "0",       OPTION_COMMAND,    "show \"brothers\", or other drivers from same sourcefile" },
-	{ CLICOMMAND_LISTCRC,                   "0",       OPTION_COMMAND,    "CRC-32s" },
-	{ CLICOMMAND_LISTROMS       ";lr",      "0",       OPTION_COMMAND,    "list required ROMs for a driver" },
-	{ CLICOMMAND_LISTSAMPLES,               "0",       OPTION_COMMAND,    "list optional samples for a driver" },
-	{ CLICOMMAND_VERIFYROMS,                "0",       OPTION_COMMAND,    "report romsets that have problems" },
-	{ CLICOMMAND_VERIFYSAMPLES,             "0",       OPTION_COMMAND,    "report samplesets that have problems" },
-	{ CLICOMMAND_ROMIDENT,                  "0",       OPTION_COMMAND,    "compare files with known MAME ROMs" },
-	{ CLICOMMAND_LISTDEVICES    ";ld",      "0",       OPTION_COMMAND,    "list available devices" },
-	{ CLICOMMAND_LISTSLOTS      ";lslot",   "0",       OPTION_COMMAND,    "list available slots and slot devices" },
-	{ CLICOMMAND_LISTMEDIA      ";lm",      "0",       OPTION_COMMAND,    "list available media for the system" },
-	{ CLICOMMAND_LISTSOFTWARE   ";lsoft",   "0",       OPTION_COMMAND,    "list known software for the system" },
-	{ CLICOMMAND_VERIFYSOFTWARE ";vsoft",   "0",       OPTION_COMMAND,    "verify known software for the system" },
-	{ CLICOMMAND_GETSOFTLIST    ";glist",   "0",       OPTION_COMMAND,    "retrieve software list by name" },
-	{ CLICOMMAND_VERIFYSOFTLIST ";vlist",   "0",       OPTION_COMMAND,    "verify software list by name" },
-	{ CLICOMMAND_VERSION,                   "0",       OPTION_COMMAND,    "get MAME version" },
+	{ nullptr,                              nullptr,   core_options::option_type::HEADER,     "FRONTEND COMMANDS" },
+	{ CLICOMMAND_LISTXML        ";lx",      "0",       core_options::option_type::COMMAND,    "all available info on driver in XML format" },
+	{ CLICOMMAND_LISTFULL       ";ll",      "0",       core_options::option_type::COMMAND,    "short name, full name" },
+	{ CLICOMMAND_LISTSOURCE     ";ls",      "0",       core_options::option_type::COMMAND,    "driver sourcefile" },
+	{ CLICOMMAND_LISTCLONES     ";lc",      "0",       core_options::option_type::COMMAND,    "show clones" },
+	{ CLICOMMAND_LISTBROTHERS   ";lb",      "0",       core_options::option_type::COMMAND,    "show \"brothers\", or other drivers from same sourcefile" },
+	{ CLICOMMAND_LISTCRC,                   "0",       core_options::option_type::COMMAND,    "CRC-32s" },
+	{ CLICOMMAND_LISTROMS       ";lr",      "0",       core_options::option_type::COMMAND,    "list required ROMs for a driver" },
+	{ CLICOMMAND_LISTSAMPLES,               "0",       core_options::option_type::COMMAND,    "list optional samples for a driver" },
+	{ CLICOMMAND_VERIFYROMS,                "0",       core_options::option_type::COMMAND,    "report romsets that have problems" },
+	{ CLICOMMAND_VERIFYSAMPLES,             "0",       core_options::option_type::COMMAND,    "report samplesets that have problems" },
+	{ CLICOMMAND_ROMIDENT,                  "0",       core_options::option_type::COMMAND,    "compare files with known MAME ROMs" },
+	{ CLICOMMAND_LISTDEVICES    ";ld",      "0",       core_options::option_type::COMMAND,    "list available devices" },
+	{ CLICOMMAND_LISTSLOTS      ";lslot",   "0",       core_options::option_type::COMMAND,    "list available slots and slot devices" },
+	{ CLICOMMAND_LISTMEDIA      ";lm",      "0",       core_options::option_type::COMMAND,    "list available media for the system" },
+	{ CLICOMMAND_LISTSOFTWARE   ";lsoft",   "0",       core_options::option_type::COMMAND,    "list known software for the system" },
+	{ CLICOMMAND_VERIFYSOFTWARE ";vsoft",   "0",       core_options::option_type::COMMAND,    "verify known software for the system" },
+	{ CLICOMMAND_GETSOFTLIST    ";glist",   "0",       core_options::option_type::COMMAND,    "retrieve software list by name" },
+	{ CLICOMMAND_VERIFYSOFTLIST ";vlist",   "0",       core_options::option_type::COMMAND,    "verify software list by name" },
+	{ CLICOMMAND_VERSION,                   "0",       core_options::option_type::COMMAND,    "get MAME version" },
 
-	{ nullptr,                              nullptr,   OPTION_HEADER,     "FRONTEND COMMAND OPTIONS" },
-	{ CLIOPTION_DTD,                        "1",       OPTION_BOOLEAN,    "include DTD in XML output" },
+	{ nullptr,                              nullptr,   core_options::option_type::HEADER,     "FRONTEND COMMAND OPTIONS" },
+	{ CLIOPTION_DTD,                        "1",       core_options::option_type::BOOLEAN,    "include DTD in XML output" },
 	{ nullptr }
 };
 
@@ -297,7 +300,7 @@ int cli_frontend::execute(std::vector<std::string> &args)
 		// reason for failure, offer some suggestions
 		if (m_result == EMU_ERR_NO_SUCH_SYSTEM
 			&& !m_options.attempted_system_name().empty()
-			&& !core_iswildstr(m_options.attempted_system_name().c_str())
+			&& !core_iswildstr(m_options.attempted_system_name())
 			&& mame_options::system(m_options) == nullptr)
 		{
 			// get the top 16 approximate matches
@@ -398,7 +401,25 @@ void cli_frontend::listsource(const std::vector<std::string> &args)
 {
 	auto const list_system_source = [] (device_type type)
 	{
-		osd_printf_info("%-16s %s\n", type.shortname(), core_filename_extract_base(type.source()));
+		std::string_view src(type.source());
+		auto prefix(src.find("src/mame/"));
+		if (std::string_view::npos == prefix)
+			prefix = src.find("src\\mame\\");
+		if (std::string_view::npos != prefix)
+		{
+			src.remove_prefix(prefix + 9);
+		}
+		else
+		{
+			auto prefix(src.find("src/"));
+			if (std::string_view::npos == prefix)
+				prefix = src.find("src\\");
+			if (std::string_view::npos != prefix)
+			{
+				src.remove_prefix(prefix + 4);
+			}
+		}
+		osd_printf_info("%-16s %s\n", type.shortname(), src);
 	};
 	apply_action(
 			args,
@@ -497,11 +518,17 @@ void cli_frontend::listbrothers(const std::vector<std::string> &args)
 	drivlist.reset();
 	while (drivlist.next())
 	{
-		int clone_of = drivlist.clone();
+		std::string_view src(drivlist.driver().type.source());
+		auto prefix(src.find("src/mame/"));
+		if (std::string_view::npos == prefix)
+			prefix = src.find("src\\mame\\");
+		if (std::string_view::npos != prefix)
+			src.remove_prefix(prefix + 9);
+		int const clone_of = drivlist.clone();
 		if (clone_of != -1)
-			osd_printf_info("%-20s %-16s %s\n", core_filename_extract_base(drivlist.driver().type.source()), drivlist.driver().name, (clone_of == -1 ? "" : drivlist.driver(clone_of).name));
+			osd_printf_info("%-20s %-16s %s\n", src, drivlist.driver().name, (clone_of == -1 ? "" : drivlist.driver(clone_of).name));
 		else
-			osd_printf_info("%-20s %s\n", core_filename_extract_base(drivlist.driver().type.source()), drivlist.driver().name);
+			osd_printf_info("%-20s %s\n", src, drivlist.driver().name);
 	}
 }
 
@@ -884,7 +911,7 @@ void cli_frontend::listmedia(const std::vector<std::string> &args)
 //-------------------------------------------------
 void cli_frontend::verifyroms(const std::vector<std::string> &args)
 {
-	bool const iswild((1U != args.size()) || core_iswildstr(args[0].c_str()));
+	bool const iswild((1U != args.size()) || core_iswildstr(args[0]));
 	std::vector<bool> matched(args.size(), false);
 	unsigned matchcount = 0;
 	auto const included = [&args, &matched, &matchcount] (char const *name) -> bool
@@ -899,7 +926,7 @@ void cli_frontend::verifyroms(const std::vector<std::string> &args)
 		auto it = matched.begin();
 		for (std::string const &pat : args)
 		{
-			if (!core_strwildcmp(pat.c_str(), name))
+			if (!core_strwildcmp(pat, name))
 			{
 				++matchcount;
 				result = true;
@@ -1368,7 +1395,7 @@ void cli_frontend::getsoftlist(const std::vector<std::string> &args)
 			{
 				for (software_list_device &swlistdev : software_list_device_enumerator(root))
 				{
-					if (core_strwildcmp(gamename, swlistdev.list_name().c_str()) == 0 && list_map.insert(swlistdev.list_name()).second)
+					if (core_strwildcmp(gamename, swlistdev.list_name()) == 0 && list_map.insert(swlistdev.list_name()).second)
 					{
 						if (!swlistdev.get_info().empty())
 						{
@@ -1413,7 +1440,7 @@ void cli_frontend::verifysoftlist(const std::vector<std::string> &args)
 	{
 		for (software_list_device &swlistdev : software_list_device_enumerator(drivlist.config()->root_device()))
 		{
-			if (core_strwildcmp(gamename, swlistdev.list_name().c_str()) == 0 && list_map.insert(swlistdev.list_name()).second)
+			if (core_strwildcmp(gamename, swlistdev.list_name()) == 0 && list_map.insert(swlistdev.list_name()).second)
 			{
 				if (!swlistdev.get_info().empty())
 				{
@@ -1509,7 +1536,7 @@ void cli_frontend::romident(const std::vector<std::string> &args)
 template <typename T, typename U> void cli_frontend::apply_action(const std::vector<std::string> &args, T &&drvact, U &&devact)
 
 {
-	bool const iswild((1U != args.size()) || core_iswildstr(args[0].c_str()));
+	bool const iswild((1U != args.size()) || core_iswildstr(args[0]));
 	std::vector<bool> matched(args.size(), false);
 	auto const included = [&args, &matched] (char const *name) -> bool
 	{
@@ -1520,7 +1547,7 @@ template <typename T, typename U> void cli_frontend::apply_action(const std::vec
 		auto it = matched.begin();
 		for (std::string const &pat : args)
 		{
-			if (!core_strwildcmp(pat.c_str(), name))
+			if (!core_strwildcmp(pat, name))
 			{
 				result = true;
 				*it = true;
@@ -1705,10 +1732,8 @@ void cli_frontend::execute_commands(std::string_view exename)
 		path_iterator iter(m_options.plugins_path());
 		std::string pluginpath;
 		while (iter.next(pluginpath))
-		{
-			osd_subst_env(pluginpath, pluginpath);
 			plugin_opts.scan_directory(pluginpath, true);
-		}
+
 		emu_file file_plugin(OPEN_FLAG_WRITE | OPEN_FLAG_CREATE | OPEN_FLAG_CREATE_PATHS);
 		if (file_plugin.open("plugin.ini"))
 			throw emu_fatalerror("Unable to create file plugin.ini\n");

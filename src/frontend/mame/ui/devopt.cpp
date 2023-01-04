@@ -13,6 +13,9 @@
 
 #include "ui/ui.h"
 #include "romload.h"
+#include "screen.h"
+
+#include "utf8.h"
 
 
 namespace ui {
@@ -43,7 +46,7 @@ void menu_device_config::populate_text(std::optional<text_layout> &layout, float
 	if (!layout || (layout->width() != width))
 	{
 		rgb_t const color = ui().colors().text_color();
-		layout.emplace(ui().create_layout(container(), width));
+		layout.emplace(create_layout(width));
 
 		machine_config &mconfig(const_cast<machine_config &>(machine().config()));
 		machine_config::token const tok(mconfig.begin_configuration(mconfig.root_device()));
@@ -258,12 +261,12 @@ void menu_device_config::populate_text(std::optional<text_layout> &layout, float
 						if (setting.value() == field.defvalue())
 						{
 							def = true;
-							util::stream_format(dips_opt, _("  %1$s    [default: %2$s]\n"), field.name(), setting.name());
+							util::stream_format(dips_opt, _("  %1$s    [default: %2$s]\n"), field.specific_name(), setting.name());
 							break;
 						}
 					}
 					if (!def)
-						util::stream_format(dips_opt, _("  %1$s\n"), field.name());
+						util::stream_format(dips_opt, _("  %1$s\n"), field.specific_name());
 				}
 				else if (field.type() == IPT_CONFIG)
 				{
@@ -274,12 +277,12 @@ void menu_device_config::populate_text(std::optional<text_layout> &layout, float
 						if (setting.value() == field.defvalue())
 						{
 							def = true;
-							util::stream_format(confs_opt, _("  %1$s    [default: %2$s]\n"), field.name(), setting.name());
+							util::stream_format(confs_opt, _("  %1$s    [default: %2$s]\n"), field.specific_name(), setting.name());
 							break;
 						}
 					}
 					if (!def)
-						util::stream_format(confs_opt, _("  %1$s\n"), field.name());
+						util::stream_format(confs_opt, _("  %1$s\n"), field.specific_name());
 				}
 			}
 

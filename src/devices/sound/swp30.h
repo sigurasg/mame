@@ -22,7 +22,6 @@ protected:
 	virtual void device_start() override;
 	virtual void device_reset() override;
 	virtual void sound_stream_update(sound_stream &stream, std::vector<read_stream_view> const &inputs, std::vector<write_stream_view> &outputs) override;
-	virtual void rom_bank_updated() override;
 	virtual void device_add_mconfig(machine_config &config) override;
 
 private:
@@ -50,6 +49,9 @@ private:
 	s32 m_sample_history[0x40][2][2];
 	u32 m_current_volume[0x40], m_target_volume[0x40];
 	s32 m_step_volume[0x40];
+
+	u32 m_waverom_adr, m_waverom_mode, m_waverom_val;
+	u16 m_waverom_access;
 
 	u16 m_program_pfp[0x180], m_program_pint[0x80], m_program_plfo[0x80];
 
@@ -125,6 +127,14 @@ private:
 	template<int sel> void prg_w(u16 data);
 	template<int sel> u16 map_r();
 	template<int sel> void map_w(u16 data);
+	template<int sel> void waverom_adr_w(u16 data);
+	template<int sel> u16 waverom_adr_r();
+	template<int sel> void waverom_mode_w(u16 data);
+	template<int sel> u16 waverom_mode_r();
+	void waverom_access_w(u16 data);
+	u16 waverom_access_r();
+	u16 waverom_busy_r();
+	template<int sel> u16 waverom_val_r();
 
 	// MEG registers
 	template<int sel> u16 prg_fp_r(offs_t offset);

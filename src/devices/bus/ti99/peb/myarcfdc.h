@@ -103,6 +103,9 @@ private:
 
 	// Recent address
 	int m_address;
+
+	// AMA/B/C decoding active
+	bool m_dec_high;
 };
 
 // =========== Decoder PAL circuit ================
@@ -119,7 +122,7 @@ public:
 	bool cs259();
 
 private:
-	void device_start() override { };
+	void device_start() override { }
 	void device_config_complete() override;
 
 	myarc_fdc_device* m_board;

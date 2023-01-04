@@ -292,9 +292,9 @@ public:
 	using address_space::install_write_tap;
 	using address_space::install_readwrite_tap;
 
-	virtual memory_passthrough_handler *install_read_tap(offs_t addrstart, offs_t addrend, offs_t addrmirror, std::string name, std::function<void (offs_t offset, uX &data, uX mem_mask)> tap, memory_passthrough_handler *mph) override;
-	virtual memory_passthrough_handler *install_write_tap(offs_t addrstart, offs_t addrend, offs_t addrmirror, std::string name, std::function<void (offs_t offset, uX &data, uX mem_mask)> tap, memory_passthrough_handler *mph) override;
-	virtual memory_passthrough_handler *install_readwrite_tap(offs_t addrstart, offs_t addrend, offs_t addrmirror, std::string name, std::function<void (offs_t offset, uX &data, uX mem_mask)> tapr, std::function<void (offs_t offset, uX &data, uX mem_mask)> tapw, memory_passthrough_handler *mph) override;
+	virtual memory_passthrough_handler install_read_tap(offs_t addrstart, offs_t addrend, offs_t addrmirror, std::string name, std::function<void (offs_t offset, uX &data, uX mem_mask)> tap, memory_passthrough_handler *mph) override;
+	virtual memory_passthrough_handler install_write_tap(offs_t addrstart, offs_t addrend, offs_t addrmirror, std::string name, std::function<void (offs_t offset, uX &data, uX mem_mask)> tap, memory_passthrough_handler *mph) override;
+	virtual memory_passthrough_handler install_readwrite_tap(offs_t addrstart, offs_t addrend, offs_t addrmirror, std::string name, std::function<void (offs_t offset, uX &data, uX mem_mask)> tapr, std::function<void (offs_t offset, uX &data, uX mem_mask)> tapw, memory_passthrough_handler *mph) override;
 
 	// construction/destruction
 	address_space_specific(memory_manager &manager, device_memory_interface &memory, int spacenum, int address_width)
@@ -433,20 +433,10 @@ public:
 		return dispatch_read<Level, Width, AddrShift>(offs_t(-1), offset & m_addrmask, mask, m_dispatch_read);
 	}
 
-	std::pair<NativeType, u16> read_native_flags(offs_t offset, NativeType mask)
-	{
-		return dispatch_read_flags<Level, Width, AddrShift>(offs_t(-1), offset & m_addrmask, mask, m_dispatch_read);
-	}
-
 	// mask-less native read
 	NativeType read_native(offs_t offset)
 	{
 		return dispatch_read<Level, Width, AddrShift>(offs_t(-1), offset & m_addrmask, uX(0xffffffffffffffffU), m_dispatch_read);
-	}
-
-	std::pair<NativeType, u16> read_native_flags(offs_t offset)
-	{
-		return dispatch_read_flags<Level, Width, AddrShift>(offs_t(-1), offset & m_addrmask, uX(0xffffffffffffffffU), m_dispatch_read);
 	}
 
 	// native write
@@ -455,26 +445,14 @@ public:
 		dispatch_write<Level, Width, AddrShift>(offs_t(-1), offset & m_addrmask, data, mask, m_dispatch_write);
 	}
 
-	u16 write_native_flags(offs_t offset, NativeType data, NativeType mask)
-	{
-		return dispatch_write_flags<Level, Width, AddrShift>(offs_t(-1), offset & m_addrmask, data, mask, m_dispatch_write);
-	}
-
 	// mask-less native write
 	void write_native(offs_t offset, NativeType data)
 	{
 		dispatch_write<Level, Width, AddrShift>(offs_t(-1), offset & m_addrmask, data, uX(0xffffffffffffffffU), m_dispatch_write);
 	}
 
-	u16 write_native_flags(offs_t offset, NativeType data)
-	{
-		return dispatch_write_flags<Level, Width, AddrShift>(offs_t(-1), offset & m_addrmask, data, uX(0xffffffffffffffffU), m_dispatch_write);
-	}
-
-	auto rop()  { return [this](offs_t offset, NativeType mask) -> NativeType { return read_native(offset, mask); }; }
-	auto ropf() { return [this](offs_t offset, NativeType mask) -> std::pair<NativeType, u16> { return read_native_flags(offset, mask); }; }
-	auto wop()  { return [this](offs_t offset, NativeType data, NativeType mask) -> void { write_native(offset, data, mask); }; }
-	auto wopf() { return [this](offs_t offset, NativeType data, NativeType mask) -> u16 { return write_native_flags(offset, data, mask); }; }
+	auto rop()   { return [this](offs_t offset, NativeType mask) -> NativeType { return read_native(offset, mask); }; }
+	auto wop()   { return [this](offs_t offset, NativeType data, NativeType mask) -> void { write_native(offset, data, mask); }; }
 
 	// virtual access to these functions
 	u8 read_byte(offs_t address) override { if constexpr(Width == 0) return read_native(address & ~NATIVE_MASK); else return memory_read_generic<Width, AddrShift, Endian, 0, true>(rop(), address, 0xff); }
@@ -504,34 +482,6 @@ public:
 	void write_qword(offs_t address, u64 data, u64 mask) override { memory_write_generic<Width, AddrShift, Endian, 3, true>(wop(), address, data, mask); }
 	void write_qword_unaligned(offs_t address, u64 data) override { memory_write_generic<Width, AddrShift, Endian, 3, false>(wop(), address, data, 0xffffffffffffffffU); }
 	void write_qword_unaligned(offs_t address, u64 data, u64 mask) override { memory_write_generic<Width, AddrShift, Endian, 3, false>(wop(), address, data, mask); }
-
-	std::pair<u8,  u16> read_byte_flags(offs_t address) override { if constexpr(Width == 0) return read_native_flags(address & ~NATIVE_MASK); else return memory_read_generic_flags<Width, AddrShift, Endian, 0, true>(ropf(), address, 0xff); }
-	std::pair<u16, u16> read_word_flags(offs_t address) override { if constexpr(Width == 1) return read_native_flags(address & ~NATIVE_MASK); else return memory_read_generic_flags<Width, AddrShift, Endian, 1, true>(ropf(), address, 0xffff); }
-	std::pair<u16, u16> read_word_flags(offs_t address, u16 mask) override { return memory_read_generic_flags<Width, AddrShift, Endian, 1, true>(ropf(), address, mask); }
-	std::pair<u16, u16> read_word_unaligned_flags(offs_t address) override { return memory_read_generic_flags<Width, AddrShift, Endian, 1, false>(ropf(), address, 0xffff); }
-	std::pair<u16, u16> read_word_unaligned_flags(offs_t address, u16 mask) override { return memory_read_generic_flags<Width, AddrShift, Endian, 1, false>(ropf(), address, mask); }
-	std::pair<u32, u16> read_dword_flags(offs_t address) override { if constexpr(Width == 2) return read_native_flags(address & ~NATIVE_MASK); else return memory_read_generic_flags<Width, AddrShift, Endian, 2, true>(ropf(), address, 0xffffffff); }
-	std::pair<u32, u16> read_dword_flags(offs_t address, u32 mask) override { return memory_read_generic_flags<Width, AddrShift, Endian, 2, true>(ropf(), address, mask); }
-	std::pair<u32, u16> read_dword_unaligned_flags(offs_t address) override { return memory_read_generic_flags<Width, AddrShift, Endian, 2, false>(ropf(), address, 0xffffffff); }
-	std::pair<u32, u16> read_dword_unaligned_flags(offs_t address, u32 mask) override { return memory_read_generic_flags<Width, AddrShift, Endian, 2, false>(ropf(), address, mask); }
-	std::pair<u64, u16> read_qword_flags(offs_t address) override { if constexpr(Width == 3) return read_native_flags(address & ~NATIVE_MASK); else return memory_read_generic_flags<Width, AddrShift, Endian, 3, true>(ropf(), address, 0xffffffffffffffffU); }
-	std::pair<u64, u16> read_qword_flags(offs_t address, u64 mask) override { return memory_read_generic_flags<Width, AddrShift, Endian, 3, true>(ropf(), address, mask); }
-	std::pair<u64, u16> read_qword_unaligned_flags(offs_t address) override { return memory_read_generic_flags<Width, AddrShift, Endian, 3, false>(ropf(), address, 0xffffffffffffffffU); }
-	std::pair<u64, u16> read_qword_unaligned_flags(offs_t address, u64 mask) override { return memory_read_generic_flags<Width, AddrShift, Endian, 3, false>(ropf(), address, mask); }
-
-	u16 write_byte_flags(offs_t address, u8 data) override { if constexpr(Width == 0) return write_native_flags(address & ~NATIVE_MASK, data); else return memory_write_generic_flags<Width, AddrShift, Endian, 0, true>(wopf(), address, data, 0xff); }
-	u16 write_word_flags(offs_t address, u16 data) override { if constexpr(Width == 1) return write_native_flags(address & ~NATIVE_MASK, data); else return memory_write_generic_flags<Width, AddrShift, Endian, 1, true>(wopf(), address, data, 0xffff); }
-	u16 write_word_flags(offs_t address, u16 data, u16 mask) override { return memory_write_generic_flags<Width, AddrShift, Endian, 1, true>(wopf(), address, data, mask); }
-	u16 write_word_unaligned_flags(offs_t address, u16 data) override { return memory_write_generic_flags<Width, AddrShift, Endian, 1, false>(wopf(), address, data, 0xffff); }
-	u16 write_word_unaligned_flags(offs_t address, u16 data, u16 mask) override { return memory_write_generic_flags<Width, AddrShift, Endian, 1, false>(wopf(), address, data, mask); }
-	u16 write_dword_flags(offs_t address, u32 data) override { if constexpr(Width == 2) return write_native_flags(address & ~NATIVE_MASK, data); else return memory_write_generic_flags<Width, AddrShift, Endian, 2, true>(wopf(), address, data, 0xffffffff); }
-	u16 write_dword_flags(offs_t address, u32 data, u32 mask) override { return memory_write_generic_flags<Width, AddrShift, Endian, 2, true>(wopf(), address, data, mask); }
-	u16 write_dword_unaligned_flags(offs_t address, u32 data) override { return memory_write_generic_flags<Width, AddrShift, Endian, 2, false>(wopf(), address, data, 0xffffffff); }
-	u16 write_dword_unaligned_flags(offs_t address, u32 data, u32 mask) override { return memory_write_generic_flags<Width, AddrShift, Endian, 2, false>(wopf(), address, data, mask); }
-	u16 write_qword_flags(offs_t address, u64 data) override { if constexpr(Width == 3) return write_native_flags(address & ~NATIVE_MASK, data); else return memory_write_generic_flags<Width, AddrShift, Endian, 3, true>(wopf(), address, data, 0xffffffffffffffffU); }
-	u16 write_qword_flags(offs_t address, u64 data, u64 mask) override { return memory_write_generic_flags<Width, AddrShift, Endian, 3, true>(wopf(), address, data, mask); }
-	u16 write_qword_unaligned_flags(offs_t address, u64 data) override { return memory_write_generic_flags<Width, AddrShift, Endian, 3, false>(wopf(), address, data, 0xffffffffffffffffU); }
-	u16 write_qword_unaligned_flags(offs_t address, u64 data, u64 mask) override { return memory_write_generic_flags<Width, AddrShift, Endian, 3, false>(wopf(), address, data, mask); }
 
 
 	// static access to these functions
@@ -810,7 +760,6 @@ address_space::address_space(memory_manager &manager, device_memory_interface &m
 		m_spacenum(spacenum),
 		m_log_unmap(true),
 		m_name(memory.space_config(spacenum)->name()),
-		m_notifier_id(0),
 		m_in_notification(0)
 {
 }
@@ -1084,73 +1033,78 @@ template<int Level, int Width, int AddrShift, endianness_t Endian> void address_
 	view.make_subdispatch(""); // Must be called after populate
 }
 
-memory_passthrough_handler *address_space::make_mph()
+std::shared_ptr<emu::detail::memory_passthrough_handler_impl> address_space::make_mph(memory_passthrough_handler *mph)
 {
-	m_mphs.emplace_back(std::make_unique<memory_passthrough_handler>(*this));
-	return m_mphs.back().get();
+	if (mph)
+	{
+		auto impl(mph->m_impl.lock());
+		if (impl)
+		{
+			assert(&impl->m_space == this);
+			return impl;
+		}
+	}
+	return m_mphs.emplace_back(std::make_shared<emu::detail::memory_passthrough_handler_impl>(*this));
 }
 
 //-------------------------------------------------
 //  install_read_tap - install a read tap on the bus
 //-------------------------------------------------
 
-template<int Level, int Width, int AddrShift, endianness_t Endian> memory_passthrough_handler *address_space_specific<Level, Width, AddrShift, Endian>::install_read_tap(offs_t addrstart, offs_t addrend, offs_t addrmirror, std::string name, std::function<void (offs_t offset, uX &data, uX mem_mask)> tap, memory_passthrough_handler *mph)
+template<int Level, int Width, int AddrShift, endianness_t Endian> memory_passthrough_handler address_space_specific<Level, Width, AddrShift, Endian>::install_read_tap(offs_t addrstart, offs_t addrend, offs_t addrmirror, std::string name, std::function<void (offs_t offset, uX &data, uX mem_mask)> tap, memory_passthrough_handler *mph)
 {
 	offs_t nstart, nend, nmask, nmirror;
 	check_optimize_mirror("install_read_tap", addrstart, addrend, addrmirror, nstart, nend, nmask, nmirror);
-	if (!mph)
-		mph = make_mph();
+	auto impl = make_mph(mph);
 
-	auto handler = new handler_entry_read_tap<Width, AddrShift>(this, *mph, name, tap);
+	auto handler = new handler_entry_read_tap<Width, AddrShift>(this, *impl, name, tap);
 	m_root_read->populate_passthrough(nstart, nend, nmirror, handler);
 	handler->unref();
 
 	invalidate_caches(read_or_write::READ);
 
-	return mph;
+	return impl;
 }
 
 //-------------------------------------------------
 //  install_write_tap - install a write tap on the bus
 //-------------------------------------------------
 
-template<int Level, int Width, int AddrShift, endianness_t Endian> memory_passthrough_handler *address_space_specific<Level, Width, AddrShift, Endian>::install_write_tap(offs_t addrstart, offs_t addrend, offs_t addrmirror, std::string name, std::function<void (offs_t offset, uX &data, uX mem_mask)> tap, memory_passthrough_handler *mph)
+template<int Level, int Width, int AddrShift, endianness_t Endian> memory_passthrough_handler address_space_specific<Level, Width, AddrShift, Endian>::install_write_tap(offs_t addrstart, offs_t addrend, offs_t addrmirror, std::string name, std::function<void (offs_t offset, uX &data, uX mem_mask)> tap, memory_passthrough_handler *mph)
 {
 	offs_t nstart, nend, nmask, nmirror;
 	check_optimize_mirror("install_write_tap", addrstart, addrend, addrmirror, nstart, nend, nmask, nmirror);
-	if (!mph)
-		mph = make_mph();
+	auto impl = make_mph(mph);
 
-	auto handler = new handler_entry_write_tap<Width, AddrShift>(this, *mph, name, tap);
+	auto handler = new handler_entry_write_tap<Width, AddrShift>(this, *impl, name, tap);
 	m_root_write->populate_passthrough(nstart, nend, nmirror, handler);
 	handler->unref();
 
 	invalidate_caches(read_or_write::WRITE);
 
-	return mph;
+	return impl;
 }
 //-------------------------------------------------
 //  install_write_tap - install a read and a write tap on the bus
 //-------------------------------------------------
 
-template<int Level, int Width, int AddrShift, endianness_t Endian> memory_passthrough_handler *address_space_specific<Level, Width, AddrShift, Endian>::install_readwrite_tap(offs_t addrstart, offs_t addrend, offs_t addrmirror, std::string name, std::function<void (offs_t offset, uX &data, uX mem_mask)> tapr, std::function<void (offs_t offset, uX &data, uX mem_mask)> tapw, memory_passthrough_handler *mph)
+template<int Level, int Width, int AddrShift, endianness_t Endian> memory_passthrough_handler address_space_specific<Level, Width, AddrShift, Endian>::install_readwrite_tap(offs_t addrstart, offs_t addrend, offs_t addrmirror, std::string name, std::function<void (offs_t offset, uX &data, uX mem_mask)> tapr, std::function<void (offs_t offset, uX &data, uX mem_mask)> tapw, memory_passthrough_handler *mph)
 {
 	offs_t nstart, nend, nmask, nmirror;
 	check_optimize_mirror("install_readwrite_tap", addrstart, addrend, addrmirror, nstart, nend, nmask, nmirror);
-	if (!mph)
-		mph = make_mph();
+	auto impl = make_mph(mph);
 
-	auto rhandler = new handler_entry_read_tap <Width, AddrShift>(this, *mph, name, tapr);
+	auto rhandler = new handler_entry_read_tap <Width, AddrShift>(this, *impl, name, tapr);
 	m_root_read ->populate_passthrough(nstart, nend, nmirror, rhandler);
 	rhandler->unref();
 
-	auto whandler = new handler_entry_write_tap<Width, AddrShift>(this, *mph, name, tapw);
+	auto whandler = new handler_entry_write_tap<Width, AddrShift>(this, *impl, name, tapw);
 	m_root_write->populate_passthrough(nstart, nend, nmirror, whandler);
 	whandler->unref();
 
 	invalidate_caches(read_or_write::READWRITE);
 
-	return mph;
+	return impl;
 }
 
 
@@ -1291,19 +1245,7 @@ template<int Level, int Width, int AddrShift, endianness_t Endian> void address_
 //  MEMORY MAPPING HELPERS
 //**************************************************************************
 
-int address_space::add_change_notifier(std::function<void (read_or_write)> n)
+util::notifier_subscription address_space::add_change_notifier(delegate<void (read_or_write)> &&n)
 {
-	int id = m_notifier_id++;
-	m_notifiers.emplace_back(notifier_t{ std::move(n), id });
-	return id;
-}
-
-void address_space::remove_change_notifier(int id)
-{
-	for(auto i = m_notifiers.begin(); i != m_notifiers.end(); i++)
-		if (i->m_id == id) {
-			m_notifiers.erase(i);
-			return;
-		}
-	fatalerror("Unknown notifier id %d, double remove?\n", id);
+	return m_notifiers.subscribe(std::move(n));
 }

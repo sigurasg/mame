@@ -47,18 +47,11 @@
 #define MAME_EMU_RENDER_H
 
 #include "rendertypes.h"
-#include "screen.h"
 
-#include <array>
 #include <cmath>
-#include <functional>
-#include <map>
+#include <list>
 #include <memory>
 #include <mutex>
-#include <string>
-#include <string_view>
-#include <tuple>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -346,7 +339,7 @@ private:
 	void get_scaled(u32 dwidth, u32 dheight, render_texinfo &texinfo, render_primitive_list &primlist, u32 flags = 0);
 	const rgb_t *get_adjusted_palette(render_container &container, u32 &out_length);
 
-	static constexpr int MAX_TEXTURE_SCALES = 20;
+	static constexpr int MAX_TEXTURE_SCALES = 100;
 
 	// a scaled_texture contains a single scaled entry for a texture
 	struct scaled_texture
@@ -586,7 +579,7 @@ private:
 	std::pair<float, float> map_point_internal(s32 target_x, s32 target_y);
 
 	// config callbacks
-	void config_load(util::xml::data_node const &targetnode);
+	void config_load(util::xml::data_node const *targetnode);
 	bool config_save(util::xml::data_node &targetnode);
 
 	// view lookups

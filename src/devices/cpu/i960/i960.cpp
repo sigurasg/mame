@@ -3,7 +3,6 @@
 #include "emu.h"
 #include "i960.h"
 #include "i960dis.h"
-#include "debugger.h"
 
 #ifdef _MSC_VER
 /* logb prototype is different for MS Visual C */
@@ -358,20 +357,12 @@ uint32_t i960_cpu_device::get_2_ci(uint32_t opcode)
 
 uint32_t i960_cpu_device::get_disp(uint32_t opcode)
 {
-	uint32_t disp;
-	disp = opcode & 0xffffff;
-	if(disp & 0x00800000)
-		disp |= 0xff000000;
-	return disp-4;
+	return util::sext(opcode, 24) - 4;
 }
 
 uint32_t i960_cpu_device::get_disp_s(uint32_t opcode)
 {
-	uint32_t disp;
-	disp = opcode & 0x1fff;
-	if(disp & 0x00001000)
-		disp |= 0xffffe000;
-	return disp-4;
+	return util::sext(opcode, 13) - 4;
 }
 
 void i960_cpu_device::cmp_s(int32_t v1, int32_t v2)
@@ -1153,7 +1144,7 @@ void i960_cpu_device::execute_op(uint32_t opcode)
 				m_icount--;
 				t1 = get_1_ri(opcode) & 0x1f;
 				t2 = get_2_ri(opcode);
-				set_ri(opcode, (t2<<t1)|(t2>>(32-t1)));
+				set_ri(opcode, rotl_32(t2, t1));
 				break;
 
 			case 0xe: // shli
@@ -1453,6 +1444,23 @@ void i960_cpu_device::execute_op(uint32_t opcode)
 
 					set_ri(opcode, res);
 				}
+				break;
+
+			case 0x4: // dmovt
+				/*
+				    The dmovt instruction moves a 32-bit word from one register to another
+				    and tests the least-significant byte of the operand to determine if it is a
+				    valid ASCII-coded decimal digit (001100002 through 001110012,
+				    corresponding to the decimal digits 0 through 9). For valid digits, the
+				    condition code (CC) is set to 000; otherwise the condition code is set to
+				    010.
+				*/
+				m_icount -= 7;
+				t1 = get_1_ri(opcode);
+				set_ri(opcode, t1);
+				m_AC &= 0xfff8;
+				if ((t1 & 0xff) < 0x30 || (t1 & 0xff) > 0x39)
+					m_AC |= 2;
 				break;
 
 			case 0x5: // modac

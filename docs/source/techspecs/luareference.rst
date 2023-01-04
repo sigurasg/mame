@@ -63,6 +63,29 @@ Core classes
 Many of MAME’s core classes used to implement an emulation session are available
 to Lua scripts.
 
+.. _luareference-core-notifiersub:
+
+Notifier subscription
+~~~~~~~~~~~~~~~~~~~~~
+
+Wraps MAME’s ``util::notifier_subscription`` class, which manages a subscription
+to a broadcast notification.
+
+Methods
+^^^^^^^
+
+subscription:unsubscribe()
+    Unsubscribes from notifications.  The subscription will become inactive and
+    no future notifications will be received.
+
+Properties
+^^^^^^^^^^
+
+subscription.is_active (read-only)
+    A Boolean indicating whether the subscription is active.  A subscription
+    becomes inactive after explicitly unsubscribing or if the underlying
+    notifier is destroyed.
+
 .. _luareference-core-attotime:
 
 Attotime
@@ -282,6 +305,9 @@ machine.hard_reset_pending (read-only)
 machine.devices (read-only)
     A :ref:`device enumerator <luareference-dev-enum>` that yields all
     :ref:`devices <luareference-dev-device>` in the emulated system.
+machine.palettes (read-only)
+    A :ref:`device enumerator <luareference-dev-enum>` that yields all
+    :ref:`palette devices <luareference-dev-dipalette>` in the emulated system.
 machine.screens (read-only)
     A :ref:`device enumerator <luareference-dev-enum>` that yields all
     :ref:`screen devices <luareference-dev-screen>` in the emulated system.
@@ -589,10 +615,6 @@ driver.rotation (read-only)
     A string indicating the rotation applied to all screens in the system after
     the screen orientation specified in the machine configuration is applied.
     Will be one of ``"rot0"``, ``"rot90"``, ``"rot180"`` or ``"rot270"``.
-driver.type (read-only)
-    A string providing a system type.  Will be one of ``"arcade"``,
-    ``"console"``, ``"computer"`` or ``"other"``.  This is for informational
-    purposes only, and may not be supported in the future.
 driver.not_working (read-only)
     A Boolean indicating whether the system is marked as not working.
 driver.supports_save (read-only)
@@ -702,6 +724,9 @@ Instantiation
 manager.machine.devices
     Returns a device enumerator that will iterate over
     :ref:`devices <luareference-dev-device>` in the system.
+manager.machine.palettes
+    Returns a device enumerator that will iterate over
+    :ref:`palette devices <luareference-dev-dipalette>` in the system.
 manager.machine.screens
     Returns a device enumerator that will iterate over
     :ref:`screen devices <luareference-dev-screen>` in the system.
@@ -721,6 +746,13 @@ emu.device_enumerator(device, [depth])
     provided, it must be an integer specifying the maximum number of levels to
     iterate below the specified device (i.e. 1 will limit iteration to the
     device and its immediate children).
+emu.palette_enumerator(device, [depth])
+    Returns a device enumerator that will iterate over
+    :ref:`palette devices <luareference-dev-dipalette>` in the sub-tree starting
+    at the specified device.  The specified device will be included if it is a
+    palette device.  If the depth is provided, it must be an integer specifying
+    the maximum number of levels to iterate below the specified device (i.e. 1
+    will limit iteration to the device and its immediate children).
 emu.screen_enumerator(device, [depth])
     Returns a device enumerator that will iterate over
     :ref:`screen devices <luareference-dev-screen>` in the sub-tree starting at
@@ -826,6 +858,93 @@ device.spaces[] (read-only)
     interface.  Note that the names are specific to the device type and have no
     special significance.
 
+.. _luareference-dev-dipalette:
+
+Palette device
+~~~~~~~~~~~~~~
+
+Wraps MAME’s ``device_palette_interface`` class, which represents a device that
+translates pen values to colours.
+
+Colours are represented in alpha/red/green/blue (ARGB) format.  Channel values
+range from 0 (transparent or off) to 255 (opaque or full intensity), inclusive.
+Colour channel values are not pre-multiplied by the alpha value.  Channel values
+are packed into the bytes of 32-bit unsigned integers, in the order alpha, red,
+green, blue from most-significant to least-significant byte.
+
+Instantiation
+^^^^^^^^^^^^^
+
+manager.machine.palettes[tag]
+    Gets a palette device by tag relative to the root machine device, or ``nil``
+    if no such device exists or it is not a palette device.
+
+Methods
+^^^^^^^
+
+palette:pen(index)
+    Gets the remapped pen number for the specified palette index.
+palette:pen_color(pen)
+    Gets the colour for the specified pen number.
+palette:pen_contrast(pen)
+    Gets the contrast value for the specified pen number.  The contrast is a
+    floating-point number.
+palette:pen_indirect(index)
+    Gets the indirect pen index for the specified palette index.
+palette:indirect_color(index)
+    Gets the indirect pen colour for the specified palette index.
+palette:set_pen_color(pen, color)
+    Sets the colour for the specified pen number.  The colour may be specified
+    as a single packed 32-bit value; or as individual red, green and blue
+    channel values, in that order.
+palette:set_pen_red_level(pen, level)
+    Sets the red channel value of the colour for the specified pen number.
+    Other channel values are not affected.
+palette:set_pen_green_level(pen, level)
+    Sets the green channel value of the colour for the specified pen number.
+    Other channel values are not affected.
+palette:set_pen_blue_level(pen, level)
+    Sets the blue channel value of the colour for the specified pen number.
+    Other channel values are not affected.
+palette:set_pen_contrast(pen, factor)
+    Sets the contrast value for the specified pen number.  The value must be a
+    floating-point number.
+palette:set_pen_indirect(pen, index)
+    Sets the indirect pen index for the specified pen number.
+palette:set_indirect_color(index, color)
+    Sets the indirect pen colour for the specified palette index.  The colour
+    may be specified as a single packed 32-bit value; or as individual red,
+    green and blue channel values, in that order.
+palette:set_shadow_factor(factor)
+    Sets the contrast value for the current shadow group.  The value must be a
+    floating-point number.
+palette:set_highlight_factor(factor)
+    Sets the contrast value for the current highlight group.  The value must be
+    a floating-point number.
+palette:set_shadow_mode(mode)
+    Sets the shadow mode.  The value is the index of the desired shadow table.
+
+Properties
+^^^^^^^^^^
+
+palette.palette (read-only)
+    The underlying :ref:`palette <luareference-render-palette>` managed by the
+    device.
+palette.entries (read-only)
+    The number of colour entries in the palette.
+palette.indirect_entries (read-only)
+    The number of indirect pen entries in the palette.
+palette.black_pen (read-only)
+    The index of the fixed black pen entry.
+palette.white_pen (read-only)
+    The index of the fixed white pen.
+palette.shadows_enabled (read-only)
+    A Boolean indicating whether shadow colours are enabled.
+palette.highlights_enabled (read-only)
+    A Boolean indicating whether highlight colours are enabled.
+palette.device (read-only)
+    The underlying :ref:`device <luareference-dev-device>`.
+
 .. _luareference-dev-screen:
 
 Screen device
@@ -881,10 +1000,12 @@ screen:pixel(x, y)
     packed into a 32-bit integer.  Returns zero (0) if the specified point is
     outside the visible area.
 screen:pixels()
-    Returns all visible pixels as 32-bit integers packed into a binary string in
-    host Endian order.  Pixels are organised in row-major order, from left to
-    right then top to bottom.  Pixels values are either palette indices or
-    colours in RGB format packed into 32-bit integers.
+    Returns all visible pixels, the visible area width and visible area height.
+
+    Pixels are returned as 32-bit integers packed into a binary string in host
+    Endian order.  Pixels are organised in row-major order, from left to right
+    then top to bottom.  Pixels values are either palette indices or colours in
+    RGB format packed into 32-bit integers.
 screen:draw_box(left, top, right, bottom, [line], [fill])
     Draws an outlined rectangle with edges at the specified positions.
 
@@ -903,8 +1024,8 @@ screen:draw_box(left, top, right, bottom, [line], [fill])
     most-significant to least-significant byte.  If the line colour is not
     provided, the UI text colour is used; if the fill colour is not provided,
     the UI background colour is used.
-screen:draw_line(x1, y1, x2, y2, [color])
-    Draws a line from (x1, y1) to (x2, y2).
+screen:draw_line(x0, y0, x1, y1, [color])
+    Draws a line from (x0, y0) to (x1, y1).
 
     Coordinates are floating-point numbers in units of emulated screen pixels,
     with the origin at (0, 0).  Note that emulated screen pixels often aren’t
@@ -993,6 +1114,10 @@ screen.frame_number (read-only)
 screen.container (read-only)
     The :ref:`render container <luareference-render-container>` used to draw the
     screen.
+screen.palette (read-only)
+    The :ref:`palette device <luareference-dev-dipalette>` used to translate
+    pixel values to colours, or ``nil`` if the screen uses a direct colour pixel
+    format.
 
 .. _luareference-dev-cass:
 
@@ -1363,6 +1488,36 @@ space:read_range(start, end, width, [step])
     Reads a range of addresses as a binary string.  The end address must be
     greater than or equal to the start address.  The width must be 8, 16, 30 or
     64.  If the step is provided, it must be a positive number of elements.
+space:add_change_notifier(callback)
+    Add a callback to receive notifications for handler changes in address
+    space.  The callback function is passed a single string as an argument,
+    either ``r`` if read handlers have potentially changed, ``w`` if write
+    handlers have potentially changed, or ``rw`` if both read and write handlers
+    have potentially changed.
+
+    Returns a :ref:`notifier subscription <luareference-core-notifiersub>`.
+space:install_read_tap(start, end, name, callback)
+    Installs a :ref:`pass-through handler <luareference-mem-tap>` that will
+    receive notifications on reads from the specified range of addresses in the
+    address space.  The start and end addresses are inclusive.  The name must be
+    a string, and the callback must be a function.
+
+    The callback is passed three arguments for the access offset, the data read,
+    and the memory access mask.  The offset is the absolute offset into the
+    address space.  To modify the data being read, return the modified value
+    from the callback function as an integer.  If the callback does not return
+    an integer, the data will not be modified.
+space:install_write_tap(start, end, name, callback)
+    Installs a :ref:`pass-through handler <luareference-mem-tap>` that will
+    receive notifications on write to the specified range of addresses in the
+    address space.  The start and end addresses are inclusive.  The name must be
+    a string, and the callback must be a function.
+
+    The callback is passed three arguments for the access offset, the data
+    written, and the memory access mask.  The offset is the absolute offset into
+    the address space.  To modify the data being written, return the modified
+    value from the callback function as an integer.  If the callback does not
+    return an integer, the data will not be modified.
 
 Properties
 ^^^^^^^^^^
@@ -1386,6 +1541,52 @@ space.endianness (read-only)
 space.map (read-only)
     The configured :ref:`address map <luareference-mem-map>` for the space or
     ``nil``.
+
+.. _luareference-mem-tap:
+
+Pass-through handler
+~~~~~~~~~~~~~~~~~~~~
+
+Tracks a pass-through handler installed in an
+:ref:`address space <luareference-mem-space>`.  A memory pass-through handler
+receives notifications on accesses to a specified range of addresses, and can
+modify the data that is read or written if desired.
+
+Instantiation
+^^^^^^^^^^^^^
+
+manager.machine.devices[tag].spaces[name]:install_read_tap(start, end, name, callback)
+    Installs a pass-through handler that will receive notifications on reads
+    from the specified range of addresses in an
+    :ref:`address space <luareference-mem-space>`.
+manager.machine.devices[tag].spaces[name]:install_write_tap(start, end, name, callback)
+    Installs a pass-through handler that will receive notifications on writes to
+    the specified range of addresses in an
+    :ref:`address space <luareference-mem-space>`.
+
+Methods
+^^^^^^^
+
+passthrough:reinstall()
+    Reinstalls the pass-through handler in the address space.  May be necessary
+    if the handler is removed due to other changes to handlers in the address
+    space.
+passthrough:remove()
+    Removes the pass-through handler from the address space.  The associated
+    callback will not be called in response to future memory accesses.
+
+Properties
+^^^^^^^^^^
+
+passthrough.addrstart (read-only)
+    The inclusive start address of the address range monitored by the
+    pass-through handler (i.e. the lowest address that the handler will be
+    notified for).
+passthrough.addrend (read-only)
+    The inclusive end address of the address range monitored by the pass-through
+    handler (i.e. the highest address that the handler will be notified for).
+passthrough.name (read-only)
+    The display name for the pass-through handler.
 
 .. _luareference-mem-map:
 
@@ -1648,9 +1849,12 @@ ioport:count_players()
     Returns the number of player controllers in the system.
 ioport:type_pressed(type, [player])
     Returns a Boolean indicating whether the specified input is currently
-    pressed.  The input port type is an enumerated value.  The player number is
-    a zero-based index.  If the player number is not supplied, it is assumed to
-    be zero.
+    pressed.  The input type may be an enumerated value or an
+    :ref:`input type <luareference-input-inputtype>` entry.  If the input type
+    is an enumerated value, the player number may be supplied as a zero-based
+    index; if the player number is not supplied, it is assumed to be zero.  If
+    the input type is an input type entry, the player number may not be supplied
+    separately.
 ioport:type_name(type, [player])
     Returns the display name for the specified input type and player number.
     The input type is an enumerated value.  The player number is a zero-based
@@ -1665,22 +1869,31 @@ ioport:type_group(type, player)
     canonical grouping in an input configuration UI.
 ioport:type_seq(type, [player], [seqtype])
     Get the configured :ref:`input sequence <luareference-input-iptseq>` for the
-    specified input type, player number and sequence type.  The input type is an
-    enumerated value.  The player number is a zero-based index.  If the player
-    number is not supplied, it is assumed to be zero.  If the sequence type is
-    supplied, it must be ``"standard"``, ``"increment"`` or ``"decrement"``; if
-    it is not supplied, it is assumed to be ``"standard"``.
+    specified input type, player number and sequence type.  The input type may
+    be an enumerated value or an
+    :ref:`input type <luareference-input-inputtype>` entry.  If the input type
+    is an enumerated value, the player number may be supplied as a zero-based
+    index; if the player number is not supplied, it is assumed to be zero.  If
+    the input type is an input type entry, the player number may not be supplied
+    separately.  If the sequence type is supplied, it must be ``"standard"``,
+    ``"increment"`` or ``"decrement"``; if it is not supplied, it is assumed to
+    be ``"standard"``.
 
     This provides access to general input configuration.
-ioport:set_type_seq(type, player, seqtype, seq)
+ioport:set_type_seq(type, [player], seqtype, seq)
     Set the configured :ref:`input sequence <luareference-input-iptseq>` for the
-    specified input type, player number and sequence type.  The input type is an
-    enumerated value.  The player number is a zero-based index.  The sequence
-    type must be ``"standard"``, ``"increment"`` or ``"decrement"``.
+    specified input type, player number and sequence type.  The input type may
+    be an enumerated value or an
+    :ref:`input type <luareference-input-inputtype>` entry.  If the input type
+    is an enumerated value, the player number must be supplied as a zero-based
+    index.  If the input type is an input type entry, the player number may not
+    be supplied separately.  The sequence type must be ``"standard"``,
+    ``"increment"`` or ``"decrement"``.
 
     This allows general input configuration to be set.
 ioport:token_to_input_type(string)
-    Returns the input type and player number for the specified input type token.
+    Returns the input type and player number for the specified input type token
+    string.
 ioport:input_type_to_token(type, [player])
     Returns the token string for the specified input type and player number.  If
     the player number is not supplied, it assumed to be zero.
@@ -1688,6 +1901,9 @@ ioport:input_type_to_token(type, [player])
 Properties
 ^^^^^^^^^^
 
+ioport.types[] (read-only)
+    Gets the supported :ref:`input types <luareference-input-inputtype>`.  Keys
+    are arbitrary indices.  All supported operations have O(1) complexity.
 ioport.ports[]
     Gets the emulated :ref:`I/O ports <luareference-input-ioport>` in the
     system.  Keys are absolute tags.  The ``at`` and ``index_of`` methods have
@@ -1850,7 +2066,7 @@ Wraps MAME’s ``ioport_field`` class, representing a field within an I/O port.
 Instantiation
 ^^^^^^^^^^^^^
 
-manager.machine.ioport.ports[tag]:field[mask]
+manager.machine.ioport.ports[tag]:field(mask)
     Gets a field for the given port by bit mask.
 manager.machine.ioport.ports[tag].fields[name]
     Gets a field for the given port by display name.
@@ -1862,6 +2078,9 @@ field:set_value(value)
     Set the value of the I/O port field.  For digital fields, the value is
     compared to zero to determine whether the field should be active; for
     analog fields, the value must be right-aligned and in the correct range.
+field:clear_value()
+    Clear programmatically overridden value and restore the field’s regular
+    behaviour.
 field:set_input_seq(seqtype, seq)
     Set the :ref:`input sequence <luareference-input-iptseq>` for the
     specified sequence type.  This is used to configure per-machine input
@@ -1906,9 +2125,13 @@ field.player (read-only)
 field.mask (read-only)
     Bits in the I/O port corresponding to this field.
 field.defvalue (read-only)
-    The field’s default value
+    The field’s default value.
+field.minvalue (read-only)
+    The minimum allowed value for analog fields, or ``nil`` for digital fields.
+field.maxvalue (read-only)
+    The maximum allowed value for analog fields, or ``nil`` for digital fields.
 field.sensitivity (read-only)
-    The sensitivity or gain for analog fields
+    The sensitivity or gain for analog fields, or ``nil`` for digital fields.
 field.way (read-only)
     The number of directions allowed by the restrictor plate/gate for a digital
     joystick, or zero (0) for other inputs.
@@ -1984,6 +2207,41 @@ Properties
 
 live.name
     Display name for the field.
+
+.. _luareference-input-inputtype:
+
+Input type
+~~~~~~~~~~
+
+Wraps MAME’s ``input_type_entry`` class, representing an emulated input type or
+emulator UI input type.  Input types are uniquely identified by the combination
+of their enumerated type value and player index.
+
+Instantiation
+^^^^^^^^^^^^^
+
+manager.machine.ioport.types[index]
+    Gets a supported input type.
+
+Properties
+^^^^^^^^^^
+
+type.type (read-only)
+    An enumerated value representing the type of input.
+type.group (read-only)
+    An integer giving the grouping for the input type.  Should be used to
+    provide canonical grouping in an input configuration UI.
+type.player (read-only)
+    The zero-based player number, or zero for non-player controls.
+type.token (read-only)
+    The token string for the input type, used in configuration files.
+type.name (read-only)
+    The display name for the input type.
+type.is_analog (read-only)
+    A Boolean indicating whether the input type is analog or digital.  Inputs
+    that only have on and off states are considered digital, while all other
+    inputs are considered analog, even if they can only represent discrete
+    values or positions.
 
 .. _luareference-input-inputman:
 
@@ -2442,6 +2700,551 @@ color.b (read/write)
     Blue channel value, in the range of zero (0, off) to one (1, full
     intensity).
 
+.. _luareference-render-palette:
+
+Palette
+~~~~~~~
+
+Wraps MAME’s ``palette_t`` class, which represents a table of colours that can
+be looked up by zero-based index.  Palettes always contain additional special
+entries for black and white.
+
+Each colour has an associated contrast adjustment value.  Each adjustment group
+has associated brightness and contrast adjustment values.  The palette also has
+overall brightness, contrast and gamma adjustment values.
+
+Colours are represented in alpha/red/green/blue (ARGB) format.  Channel values
+range from 0 (transparent or off) to 255 (opaque or full intensity), inclusive.
+Colour channel values are not pre-multiplied by the alpha value.  Channel values
+are packed into the bytes of 32-bit unsigned integers, in the order alpha, red,
+green, blue from most-significant to least-significant byte.
+
+Instantiation
+^^^^^^^^^^^^^
+
+emu.palette(colors, [groups])
+    Creates a palette with the specified number of colours and
+    brightness/contrast adjustment groups.  The number of colour groups defaults
+    to one if not specified.  Colours are initialised to black, brightness
+    adjustment is initialised to 0.0, contrast adjustment initialised to 1.0,
+    and gamma adjustment is initialised to 1.0.
+
+Methods
+^^^^^^^
+
+palette:entry_color(index)
+    Gets the colour at the specified zero-based index.
+
+    Index values range from zero to the number of colours in the palette minus
+    one.  Returns black if the index is greater than or equal to the number of
+    colours in the palette.
+palette:entry_contrast(index)
+    Gets the contrast adjustment for the colour at the specified zero-based
+    index.  This is a floating-point number.
+
+    Index values range from zero to the number of colours in the palette minus
+    one.  Returns 1.0 if the index is greater than or equal to the number of
+    colours in the palette.
+palette:entry_adjusted_color(index, [group])
+    Gets a colour with brightness, contrast and gamma adjustments applied.
+
+    If the group is specified, colour index values range from zero to the number
+    of colours in the palette minus one, and group values range from zero to the
+    number of adjustment groups in the palette minus one.
+
+    If the group is not specified, index values range from zero to the number of
+    colours multiplied by the number of adjustment groups plus one.  Index
+    values may be calculated by multiplying the zero-based group index by the
+    number of colours in the palette, and adding the zero-based colour index.
+    The last two index values correspond to the special entries for black and
+    white, respectively.
+
+    Returns black if the specified combination of index and adjustment group is
+    invalid.
+palette:entry_set_color(index, color)
+    Sets the colour at the specified zero-based index.  The colour may be
+    specified as a single packed 32-bit value; or as individual red, green and
+    blue channel values, in that order.
+
+    Index values range from zero to the number of colours in the palette minus
+    one.  Raises an error if the index value is invalid.
+palette:entry_set_red_level(index, level)
+    Sets the red channel value of the colour at the specified zero-based index.
+    Other channel values are not affected.
+
+    Index values range from zero to the number of colours in the palette minus
+    one.  Raises an error if the index value is invalid.
+palette:entry_set_green_level(index, level)
+    Sets the green channel value of the colour at the specified zero-based
+    index.  Other channel values are not affected.
+
+    Index values range from zero to the number of colours in the palette minus
+    one.  Raises an error if the index value is invalid.
+palette:entry_set_blue_level(index, level)
+    Sets the blue channel value of the colour at the specified zero-based index.
+    Other channel values are not affected.
+
+    Index values range from zero to the number of colours in the palette minus
+    one.  Raises an error if the index value is invalid.
+palette:entry_set_contrast(index, level)
+    Sets the contrast adjustment value for the colour at the specified
+    zero-based index.  This must be a floating-point number.
+
+    Index values range from zero to the number of colours in the palette minus
+    one.  Raises an error if the index value is invalid.
+palette:group_set_brightness(group, brightness)
+    Sets the brightness adjustment value for the adjustment group at the
+    specified zero-based index.  This must be a floating-point number.
+
+    Group values range from zero to the number of adjustment groups in the
+    palette minus one.  Raises an error if the index value is invalid.
+palette:group_set_contrast(group, contrast)
+    Sets the contrast adjustment value for the adjustment group at the specified
+    zero-based index.  This must be a floating-point number.
+
+    Group values range from zero to the number of adjustment groups in the
+    palette minus one.  Raises an error if the index value is invalid.
+
+Properties
+^^^^^^^^^^
+
+palette.colors (read-only)
+    The number of colour entries in each group of colours in the palette.
+palette.groups (read-only)
+    The number of groups of colours in the palette.
+palette.max_index (read-only)
+    The number of valid colour indices in the palette.
+palette.black_entry (read-only)
+    The index of the special entry for the colour black.
+palette.white_entry (read-only)
+    The index of the special entry for the colour white.
+palette.brightness (write-only)
+    The overall brightness adjustment for the palette.  This is a floating-point
+    number.
+palette.contrast (write-only)
+    The overall contrast adjustment for the palette.  This is a floating-point
+    number.
+palette.gamma (write-only)
+    The overall gamma adjustment for the palette.  This is a floating-point
+    number.
+
+.. _luareference-render-bitmap:
+
+Bitmap
+~~~~~~
+
+Wraps implementations of MAME’s ``bitmap_t`` and ``bitmap_specific`` classes,
+which represent two-dimensional bitmaps stored in row-major order.  Pixel
+coordinates are zero-based, increasing to the right and down.  Several pixel
+formats are supported.
+
+Instantiation
+^^^^^^^^^^^^^
+
+emu.bitmap_ind8(palette, [width, height], [xslop, yslop])
+    Creates an 8-bit indexed bitmap.  Each pixel is a zero-based, unsigned 8-bit
+    index into a :ref:`palette <luareference-render-palette>`.
+
+    If no width and height are specified, they are assumed to be zero.  If the
+    width is specified, the height must also be specified.  The X and Y slop
+    values set the amount of extra storage in pixels to reserve at the
+    left/right of each row and top/bottom of each column, respectively.  If an X
+    slop value is specified, a Y slop value must be specified as well.  If no X
+    and Y slop values are specified, they are assumed to be zero (the storage
+    will be sized to fit the bitmap content).  If the width and/or height is
+    less than or equal to zero, no storage will be allocated, irrespective of
+    the X and Y slop values, and the width and height of the bitmap will both be
+    set to zero.
+
+    The initial clipping rectangle is set to the entirety of the bitmap.
+emu.bitmap_ind16(palette, [width, height], [xslop, yslop])
+    Creates a 16-bit indexed bitmap.  Each pixel is a zero-based, unsigned
+    16-bit index into a :ref:`palette <luareference-render-palette>`.
+
+    If no width and height are specified, they are assumed to be zero.  If the
+    width is specified, the height must also be specified.  The X and Y slop
+    values set the amount of extra storage in pixels to reserve at the
+    left/right of each row and top/bottom of each column, respectively.  If an X
+    slop value is specified, a Y slop value must be specified as well.  If no X
+    and Y slop values are specified, they are assumed to be zero (the storage
+    will be sized to fit the bitmap content).  If the width and/or height is
+    less than or equal to zero, no storage will be allocated, irrespective of
+    the X and Y slop values, and the width and height of the bitmap will both be
+    set to zero.
+
+    The initial clipping rectangle is set to the entirety of the bitmap.
+emu.bitmap_ind32(palette, [width, height], [xslop, yslop])
+    Creates a 32-bit indexed bitmap.  Each pixel is a zero-based, unsigned
+    32-bit index into a :ref:`palette <luareference-render-palette>`.
+
+    If no width and height are specified, they are assumed to be zero.  If the
+    width is specified, the height must also be specified.  The X and Y slop
+    values set the amount of extra storage in pixels to reserve at the
+    left/right of each row and top/bottom of each column, respectively.  If an X
+    slop value is specified, a Y slop value must be specified as well.  If no X
+    and Y slop values are specified, they are assumed to be zero (the storage
+    will be sized to fit the bitmap content).  If the width and/or height is
+    less than or equal to zero, no storage will be allocated, irrespective of
+    the X and Y slop values, and the width and height of the bitmap will both be
+    set to zero.
+
+    The initial clipping rectangle is set to the entirety of the bitmap.
+emu.bitmap_ind64(palette, [width, height], [xslop, yslop])
+    Creates a 64-bit indexed bitmap.  Each pixel is a zero-based, unsigned
+    64-bit index into a :ref:`palette <luareference-render-palette>`.
+
+    If no width and height are specified, they are assumed to be zero.  If the
+    width is specified, the height must also be specified.  The X and Y slop
+    values set the amount of extra storage in pixels to reserve at the
+    left/right of each row and top/bottom of each column, respectively.  If an X
+    slop value is specified, a Y slop value must be specified as well.  If no X
+    and Y slop values are specified, they are assumed to be zero (the storage
+    will be sized to fit the bitmap content).  If the width and/or height is
+    less than or equal to zero, no storage will be allocated, irrespective of
+    the X and Y slop values, and the width and height of the bitmap will both be
+    set to zero.
+
+    The initial clipping rectangle is set to the entirety of the bitmap.
+emu.bitmap_yuy16([width, height], [xslop], yslop])
+    Creates a Y'CbCr format bitmap with 4:2:2 chroma subsampling (horizontal
+    pairs of pixels have individual luma values but share chroma values).  Each
+    pixel is a 16-bit integer value.  The most significant byte of the pixel
+    value is the unsigned 8-bit Y' (luma) component of the pixel colour.  For
+    each horizontal pair of pixels, the least significant byte of the first
+    pixel (even zero-based X coordinate) value is the signed 8-bit Cb value for
+    the pair of pixels, and the least significant byte of the second pixel (odd
+    zero-based X coordinate) value is the signed 8-bit Cr value for the pair of
+    pixels.
+
+    If no width and height are specified, they are assumed to be zero.  If the
+    width is specified, the height must also be specified.  The X and Y slop
+    values set the amount of extra storage in pixels to reserve at the
+    left/right of each row and top/bottom of each column, respectively.  If an X
+    slop value is specified, a Y slop value must be specified as well.  If no X
+    and Y slop values are specified, they are assumed to be zero (the storage
+    will be sized to fit the bitmap content).  If the width and/or height is
+    less than or equal to zero, no storage will be allocated, irrespective of
+    the X and Y slop values, and the width and height of the bitmap will both be
+    set to zero.
+
+    The initial clipping rectangle is set to the entirety of the bitmap.
+emu.bitmap_rgb32([width, height], [xslop, yslop])
+    Creates an RGB format bitmap with no alpha (transparency) channel.  Each
+    pixel is represented by a 32-bit integer value.  The most significant byte
+    of the pixel value is ignored.  The remaining three bytes, from most
+    significant to least significant, are the unsigned 8-bit unsigned red, green
+    and blue channel values (larger values correspond to higher intensities).
+
+    If no width and height are specified, they are assumed to be zero.  If the
+    width is specified, the height must also be specified.  The X and Y slop
+    values set the amount of extra storage in pixels to reserve at the
+    left/right of each row and top/bottom of each column, respectively.  If an X
+    slop value is specified, a Y slop value must be specified as well.  If no X
+    and Y slop values are specified, they are assumed to be zero (the storage
+    will be sized to fit the bitmap content).  If the width and/or height is
+    less than or equal to zero, no storage will be allocated, irrespective of
+    the X and Y slop values, and the width and height of the bitmap will both be
+    set to zero.
+
+    The initial clipping rectangle is set to the entirety of the bitmap.
+emu.bitmap_argb32([width, height], [xslop, yslop])
+    Creates an ARGB format bitmap.  Each pixel is represented by a 32-bit
+    integer value.  The most significant byte of the pixel is the 8-bit unsigned
+    alpha (transparency) channel value (smaller values are more transparent).
+    The remaining three bytes, from most significant to least significant, are
+    the unsigned 8-bit unsigned red, green and blue channel values (larger
+    values correspond to higher intensities).  Colour channel values are not
+    pre-multiplied by the alpha channel value.
+
+    If no width and height are specified, they are assumed to be zero.  If the
+    width is specified, the height must also be specified.  The X and Y slop
+    values set the amount of extra storage in pixels to reserve at the
+    left/right of each row and top/bottom of each column, respectively.  If an X
+    slop value is specified, a Y slop value must be specified as well.  If no X
+    and Y slop values are specified, they are assumed to be zero (the storage
+    will be sized to fit the bitmap content).  If the width and/or height is
+    less than or equal to zero, no storage will be allocated, irrespective of
+    the X and Y slop values, and the width and height of the bitmap will both be
+    set to zero.
+
+    The initial clipping rectangle is set to the entirety of the bitmap.
+emu.bitmap_ind8(source, [x0, y0, x1, y1])
+    Creates an 8-bit indexed bitmap representing a view of a portion of an
+    existing bitmap.  The initial clipping rectangle is set to the bounds of the
+    view.  The source bitmap will be locked, preventing resizing and
+    reallocation.
+
+    If no coordinates are specified, the new bitmap will represent a view of the
+    source bitmap’s current clipping rectangle.  If coordinates are specified,
+    the new bitmap will represent a view of the rectangle with top left corner
+    at (x0, y0) and bottom right corner at (x1, y1) in the source bitmap.
+    Coordinates are in units of pixels.  The bottom right coordinates are
+    inclusive.
+
+    The source bitmap must be owned by the Lua script and must use the 8-bit
+    indexed format.  Raises an error if coordinates are specified representing a
+    rectangle not fully contained within the source bitmap’s clipping rectangle.
+emu.bitmap_ind16(source, [x0, y0, x1, y1])
+    Creates a 16-bit indexed bitmap representing a view of a portion of an
+    existing bitmap.  The initial clipping rectangle is set to the bounds of the
+    view.  The source bitmap will be locked, preventing resizing and
+    reallocation.
+
+    If no coordinates are specified, the new bitmap will represent a view of the
+    source bitmap’s current clipping rectangle.  If coordinates are specified,
+    the new bitmap will represent a view of the rectangle with top left corner
+    at (x0, y0) and bottom right corner at (x1, y1) in the source bitmap.
+    Coordinates are in units of pixels.  The bottom right coordinates are
+    inclusive.
+
+    The source bitmap must be owned by the Lua script and must use the 16-bit
+    indexed format.  Raises an error if coordinates are specified representing a
+    rectangle not fully contained within the source bitmap’s clipping rectangle.
+emu.bitmap_ind32(source, [x0, y0, x1, y1])
+    Creates a 32-bit indexed bitmap representing a view of a portion of an
+    existing bitmap.  The initial clipping rectangle is set to the bounds of the
+    view.  The source bitmap will be locked, preventing resizing and
+    reallocation.
+
+    If no coordinates are specified, the new bitmap will represent a view of the
+    source bitmap’s current clipping rectangle.  If coordinates are specified,
+    the new bitmap will represent a view of the rectangle with top left corner
+    at (x0, y0) and bottom right corner at (x1, y1) in the source bitmap.
+    Coordinates are in units of pixels.  The bottom right coordinates are
+    inclusive.
+
+    The source bitmap must be owned by the Lua script and must use the 32-bit
+    indexed format.  Raises an error if coordinates are specified representing a
+    rectangle not fully contained within the source bitmap’s clipping rectangle.
+emu.bitmap_ind64(source, [x0, y0, x1, y1])
+    Creates a 64-bit indexed bitmap representing a view of a portion of an
+    existing bitmap.  The initial clipping rectangle is set to the bounds of the
+    view.  The source bitmap will be locked, preventing resizing and
+    reallocation.
+
+    If no coordinates are specified, the new bitmap will represent a view of the
+    source bitmap’s current clipping rectangle.  If coordinates are specified,
+    the new bitmap will represent a view of the rectangle with top left corner
+    at (x0, y0) and bottom right corner at (x1, y1) in the source bitmap.
+    Coordinates are in units of pixels.  The bottom right coordinates are
+    inclusive.
+
+    The source bitmap must be owned by the Lua script and must use the 64-bit
+    indexed format.  Raises an error if coordinates are specified representing a
+    rectangle not fully contained within the source bitmap’s clipping rectangle.
+emu.bitmap_yuy16(source, [x0, y0, x1, y1])
+    Creates a Y'CbCr format bitmap with 4:2:2 chroma subsampling representing a
+    view of a portion of an existing bitmap.  The initial clipping rectangle is
+    set to the bounds of the view.  The source bitmap will be locked, preventing
+    resizing and reallocation.
+
+    If no coordinates are specified, the new bitmap will represent a view of the
+    source bitmap’s current clipping rectangle.  If coordinates are specified,
+    the new bitmap will represent a view of the rectangle with top left corner
+    at (x0, y0) and bottom right corner at (x1, y1) in the source bitmap.
+    Coordinates are in units of pixels.  The bottom right coordinates are
+    inclusive.
+
+    The source bitmap must be owned by the Lua script and must use the Y'CbCr
+    format.  Raises an error if coordinates are specified representing a
+    rectangle not fully contained within the source bitmap’s clipping rectangle.
+emu.bitmap_rgb32(source, [x0, y0, x1, y1])
+    Creates an RGB format bitmap with 4:2:2 chroma subsampling representing a
+    view of a portion of an existing bitmap.  The initial clipping rectangle is
+    set to the bounds of the view.  The source bitmap will be locked, preventing
+    resizing and reallocation.
+
+    If no coordinates are specified, the new bitmap will represent a view of the
+    source bitmap’s current clipping rectangle.  If coordinates are specified,
+    the new bitmap will represent a view of the rectangle with top left corner
+    at (x0, y0) and bottom right corner at (x1, y1) in the source bitmap.
+    Coordinates are in units of pixels.  The bottom right coordinates are
+    inclusive.
+
+    The source bitmap must be owned by the Lua script and must use the RGB
+    format.  Raises an error if coordinates are specified representing a
+    rectangle not fully contained within the source bitmap’s clipping rectangle.
+emu.bitmap_argb32(source, [x0, y0, x1, y1])
+    Creates an ARGB format bitmap with 4:2:2 chroma subsampling representing a
+    view of a portion of an existing bitmap.  The initial clipping rectangle is
+    set to the bounds of the view.  The source bitmap will be locked, preventing
+    resizing and reallocation.
+
+    If no coordinates are specified, the new bitmap will represent a view of the
+    source bitmap’s current clipping rectangle.  If coordinates are specified,
+    the new bitmap will represent a view of the rectangle with top left corner
+    at (x0, y0) and bottom right corner at (x1, y1) in the source bitmap.
+    Coordinates are in units of pixels.  The bottom right coordinates are
+    inclusive.
+
+    The source bitmap must be owned by the Lua script and must use the ARGB
+    format.  Raises an error if coordinates are specified representing a
+    rectangle not fully contained within the source bitmap’s clipping rectangle.
+
+Methods
+^^^^^^^
+
+bitmap:cliprect()
+    Returns the left, top, right and bottom coordinates of the bitmap’s clipping
+    rectangle.  Coordinates are in units of pixels; the bottom and right
+    coordinates are inclusive.
+bitmap:reset()
+    Sets the width and height to zero, and frees the pixel storage if the bitmap
+    owns its own storage, or releases the source bitmap if the it represents a
+    view of another bitmap.
+
+    The bitmap must be owned by the Lua script.  Raises an error if the bitmap’s
+    storage is referenced by another bitmap or a :ref:`texture
+    <luareference-render-texture>`.
+bitmap:allocate(width, height, [xslop, yslop])
+    Reallocates storage for the bitmap, sets its width and height, and sets the
+    clipping rectangle to the entirety of the bitmap.  If the bitmap already
+    owns allocated storage, it will always be freed and reallocated; if the
+    bitmap represents a view of another bitmap, the source bitmap will be
+    released.  The storage will be filled with pixel value zero.
+
+    The X and Y slop values set the amount of extra storage in pixels to reserve
+    at the left/right of each row and top/bottom of each column, respectively.
+    If an X slop value is specified, a Y slop value must be specified as well.
+    If no X and Y slop values are specified, they are assumed to be zero (the
+    storage will be sized to fit the bitmap content).  If the width and/or
+    height is less than or equal to zero, no storage will be allocated,
+    irrespective of the X and Y slop values, and the width and height of the
+    bitmap will both be set to zero.
+
+    The bitmap must be owned by the Lua script.  Raises an error if the bitmap’s
+    storage is referenced by another bitmap or a :ref:`texture
+    <luareference-render-texture>`.
+bitmap:resize(width, height, [xslop, yslop])
+    Changes the width and height, and sets the clipping rectangle to the
+    entirety of the bitmap.
+
+    The X and Y slop values set the amount of extra storage in pixels to reserve
+    at the left/right of each row and top/bottom of each column, respectively.
+    If an X slop value is specified, a Y slop value must be specified as well.
+    If no X and Y slop values are specified, they are assumed to be zero (rows
+    will be stored contiguously, and the top row will be placed at the beginning
+    of the bitmap’s storage).
+
+    If the bitmap already owns allocated storage and it is large enough for the
+    updated size, it will be used without being freed; if it is too small for
+    the updated size, it will always be freed and reallocated.  If the bitmap
+    represents a view of another bitmap, the source bitmap will be released.  If
+    storage is allocated, it will be filled with pixel value zero (if existing
+    storage is used, its contents will not be changed).
+
+    Raises an error if the bitmap’s storage is referenced by another bitmap or a
+    :ref:`texture <luareference-render-texture>`.
+bitmap:wrap(source, [x0, y0, x1, y1])
+    Makes the bitmap represent a view of a portion of another bitmap and sets
+    the clipping rectangle to the bounds of the view.
+
+    If no coordinates are specified, the target bitmap will represent a view of
+    the source bitmap’s current clipping rectangle.  If coordinates are
+    specified, the target bitmap will represent a view of the rectangle with top
+    left corner at (x0, y0) and bottom right corner at (x1, y1) in the source
+    bitmap.  Coordinates are in units of pixels.  The bottom right coordinates
+    are inclusive.
+
+    The source bitmap will be locked, preventing resizing and reallocation.  If
+    the target bitmap owns allocated storage, it will be freed; if it represents
+    a view of another bitmap, the current source bitmap will be released.
+
+    The source and target bitmaps must both be owned by the Lua script and must
+    use the same pixel format.  Raises an error if coordinates are specified
+    representing a rectangle not fully contained within the source bitmap’s
+    clipping rectangle; if the bitmap’s storage is referenced by another bitmap
+    or a :ref:`texture <luareference-render-texture>`; or if the source and
+    target are the same bitmap.
+bitmap:pix(x, y)
+    Returns the colour value of the pixel at the specified location.
+    Coordinates are zero-based in units of pixels.
+bitmap:pixels([x0, y0, x1, y1])
+    Returns the pixels, width and height of the portion of the bitmap with top
+    left corner at (x0, y0) and bottom right corner at (x1, y1).  Coordinates
+    are in units of pixels.  The bottom right coordinates are inclusive.  If
+    coordinates are not specified, the bitmap’s clipping rectangle is used.
+
+    Pixels are returned packed into a binary string in host Endian order.
+    Pixels are organised in row-major order, from left to right then top to
+    bottom.  The size and format of the pixel values depends on the format of
+    the bitmap.  Raises an error if coordinates are specified representing a
+    rectangle not fully contained within the bitmap’s clipping rectangle.
+bitmap:fill(color, [x0, y0, x1, y1])
+    Fills a portion of the bitmap with the specified colour value.  If
+    coordinates are not specified, the clipping rectangle is filled; if
+    coordinates are specified, the intersection of the clipping rectangle and
+    the rectangle with top left corner at (x0, y0) and bottom right corner at
+    (x1, y1) is filled.  Coordinates are in units of pixels.  The bottom right
+    coordinates are inclusive.
+bitmap:plot(x, y, color)
+    Sets the colour value of the pixel at the specified location if it is within
+    the clipping rectangle.  Coordinates are zero-based in units of pixels.
+bitmap:plot_box(x, y, width, height, color)
+    Fills the intersection of the clipping rectangle and the rectangle with top
+    left (x, y) and the specified height and width with the specified colour
+    value.  Coordinates and dimensions are in units of pixels.
+
+Properties
+^^^^^^^^^^
+
+bitmap.palette (read/write)
+    The :ref:`palette <luareference-render-palette>` used to translate pixel
+    values to colours.  Only applicable for bitmaps that use indexed pixel
+    formats.
+bitmap.width (read-only)
+    Width of the bitmap in pixels.
+bitmap.height (read-only)
+    Height of the bitmap in pixels.
+bitmap.rowpixels (read-only)
+    Row stride of the bitmap’s storage in pixels.  That is, the difference in
+    pixel offsets of the pixels at the same horizontal location in consecutive
+    rows.  May be greater than the width.
+bitmap.rowbytes (read-only)
+    Row stride of the bitmap’s storage in bytes.  That is, the difference in
+    byte addresses of the pixels at the same horizontal location in consecutive
+    rows.
+bitmap.bpp (read-only)
+    Size of the type used to represent pixels in the bitmap in bits (may be
+    larger than the number of significant bits).
+bitmap.valid (read-only)
+    A Boolean indicating whether the bitmap has storage available (may be false
+    for empty bitmaps).
+bitmap.locked (read-only)
+    A Boolean indicating whether the bitmap’s storage is referenced by another
+    bitmap or a :ref:`texture <luareference-render-texture>`.
+
+.. _luareference-render-texture:
+
+Render texture
+~~~~~~~~~~~~~~
+
+Wraps MAME’s ``render_texture`` class, representing a texture that cam be drawn
+in a :ref:`render container <luareference-render-container>`.  Render textures
+must be freed before the emulation session ends.
+
+Instantiation
+^^^^^^^^^^^^^
+
+manager.machine.render:texture_alloc(bitmap)
+    Creates a render texture based on a :ref:`bitmap
+    <luareference-render-bitmap>`.  The bitmap must be owned by the Lua script,
+    and must use the Y'CbCr, RGB or ARGB format.  The bitmap’s storage will be
+    locked, preventing resizing and reallocation.
+
+Methods
+^^^^^^^
+
+texture:free()
+    Frees the texture.  The storage of the underlying bitmap will be released.
+
+Properties
+^^^^^^^^^^
+
+texture.valid (read-only)
+    A Boolean indicating whether the texture is valid (false if the texture has
+    been freed).
+
 .. _luareference-render-manager:
 
 Render manager
@@ -2455,6 +3258,16 @@ Instantiation
 
 manager.machine.render
     Gets the global render manager instance for the emulation session.
+
+Methods
+^^^^^^^
+
+render:texture_alloc(bitmap)
+    Creates a :ref:`render texture <luareference-render-texture>` based on a
+    :ref:`bitmap <luareference-render-bitmap>`.  The bitmap must be owned by the
+    Lua script, and must use the Y'CbCr, RGB or ARGB pixel format.  The bitmap’s
+    storage will be locked, preventing resizing and reallocation.  Render
+    textures must be freed before the emulation session ends.
 
 Properties
 ^^^^^^^^^^
@@ -2564,7 +3377,7 @@ container:draw_box(left, top, right, bottom, [line], [fill])
 
     Coordinates are floating-point numbers in the range of 0 (zero) to 1 (one),
     with (0, 0) at the top left and (1, 1) at the bottom right of the window or
-    screen that showss the user interface.  Note that the aspect ratio is
+    the screen that shows the user interface.  Note that the aspect ratio is
     usually not square.  Coordinates are limited to the window or screen area.
 
     The fill and line colours are in alpha/red/green/blue (ARGB) format.
@@ -2575,20 +3388,13 @@ container:draw_box(left, top, right, bottom, [line], [fill])
     most-significant to least-significant byte.  If the line colour is not
     provided, the UI text colour is used; if the fill colour is not provided,
     the UI background colour is used.
-container:draw_line(x1, y1, x2, y2, [color])
-    Draws a line from (x1, y1) to (x2, y2).
+container:draw_line(x0, y0, x1, y1, [color])
+    Draws a line from (x0, y0) to (x1, y1).
 
     Coordinates are floating-point numbers in the range of 0 (zero) to 1 (one),
     with (0, 0) at the top left and (1, 1) at the bottom right of the window or
-    screen that showss the user interface.  Note that the aspect ratio is
+    the screen that shows the user interface.  Note that the aspect ratio is
     usually not square.  Coordinates are limited to the window or screen area.
-
-    Coordinates are floating-point numbers in units of screen pixels, with the
-    origin at (0, 0).  Note that screen pixels often aren’t square.  The
-    coordinate system is rotated if the screen is rotated, which is usually the
-    case for vertical-format screens.  Before rotation, the origin is at the top
-    left, and coordinates increase to the right and downwards.  Coordinates are
-    limited to the screen area.
 
     The line colour is in alpha/red/green/blue (ARGB) format.  Channel values
     are in the range 0 (transparent or off) to 255 (opaque or full intensity),
@@ -2597,6 +3403,24 @@ container:draw_line(x1, y1, x2, y2, [color])
     integer, in the order alpha, red, green, blue from most-significant to
     least-significant byte.  If the line colour is not provided, the UI text
     colour is used.
+container:draw_quad(texture, x0, y0, x1, y1, [color])
+    Draws a textured rectangle with top left corner at (x0, y0) and bottom right
+    corner at (x1, y1).  If a colour is specified, the ARGB channel values of
+    the texture’s pixels are multiplied by the corresponding values of the
+    specified colour.
+
+    Coordinates are floating-point numbers in the range of 0 (zero) to 1 (one),
+    with (0, 0) at the top left and (1, 1) at the bottom right of the window or
+    the screen that shows the user interface.  Note that the aspect ratio is
+    usually not square.  If the rectangle extends beyond the container’s bounds,
+    it will be cropped.
+
+    The colour is in alpha/red/green/blue (ARGB) format.  Channel values are in
+    the range 0 (transparent or off) to 255 (opaque or full intensity),
+    inclusive.  Colour channel values are not pre-multiplied by the alpha value.
+    The channel values must be packed into the bytes of a 32-bit unsigned
+    integer, in the order alpha, red, green, blue from most-significant to
+    least-significant byte.
 container:draw_text(x|justify, y, text, [foreground], [background])
     Draws text at the specified position.  If the screen is rotated the text
     will be rotated.
@@ -2611,7 +3435,7 @@ container:draw_text(x|justify, y, text, [foreground], [background])
 
     Coordinates are floating-point numbers in the range of 0 (zero) to 1 (one),
     with (0, 0) at the top left and (1, 1) at the bottom right of the window or
-    screen that showss the user interface.  Note that the aspect ratio is
+    the screen that shows the user interface.  Note that the aspect ratio is
     usually not square.  Coordinates are limited to the window or screen area.
 
     The foreground and background colours are in alpha/red/green/blue (ARGB)
@@ -2745,10 +3569,12 @@ screens in the emulated system.
 Instantiation
 ^^^^^^^^^^^^^
 
-Layout scripts generally
-
 manager.machine.render.targets[index].current_view
     Gets the currently selected view for a given render target.
+file.views[name]
+    Gets the view with the specified name from a
+    :ref:`layout file <luareference-render-layfile>`.  This is how layout
+    scripts generally obtain views.
 
 Methods
 ^^^^^^^
@@ -2982,8 +3808,220 @@ Debugger
 --------
 
 Some of MAME’s core debugging features can be controlled from Lua script.  The
-debugger must be enabled to use the debugging features (usually by passing
+debugger must be enabled to use the debugger features (usually by passing
 ``-debug`` on the command line).
+
+.. _luareference-debug-symtable:
+
+Symbol table
+~~~~~~~~~~~~
+
+Wrap’s MAME’s ``symbol_table`` class, providing named symbols that can be used
+in expressions.  Note that symbol tables can be created and used even when the
+debugger is not enabled.
+
+Instantiation
+^^^^^^^^^^^^^
+
+emu.symbol_table(machine)
+    Creates a new symbol table in the context of the specified machine,
+emu.symbol_table(parent, [device])
+    Creates a new symbol table with the specified parent symbol table.  If a
+    device is specified and it implements ``device_memory_interface``, it will
+    be used as the base for looking up address spaces and memory regions.  Note
+    that if a device that does not implement ``device_memory_interface`` is
+    supplied, it will not be used (address spaces and memory regions will be
+    looked up relative to the root device).
+emu.symbol_table(device)
+    Creates a new symbol table in the context of the specified device.  If the
+    device implements ``device_memory_interface``, it will be used as the base
+    for looking up address spaces and memory regions.  Note that if a device
+    that does not implement ``device_memory_interface`` is supplied, it will
+    only be used to determine the machine context (address spaces and memory
+    regions will be looked up relative to the root device).
+
+Methods
+^^^^^^^
+
+symbols:set_memory_modified_func(cb)
+    Set a function to call when memory is modified via the symbol table.  No
+    arguments are passed to the function and any return values are ignored.
+    Call with ``nil`` to remove the callback.
+symbols:add(name, [value])
+    Adds a named integer symbol.  The name must be a string.  If a value is
+    supplied, it must be an integer.  If a value is supplied, a read-only symbol
+    is added with the supplied value.  If no value is supplied, a read/write
+    symbol is created with and initial value of zero.  If a symbol entry with
+    the specified name already exists in the symbol table, it will be replaced.
+
+    Returns the new :ref:`symbol entry <luareference-debug-symentry>`.
+symbols:add(name, getter, [setter], [format])
+    Adds a named integer symbol using getter and optional setter callbacks.  The
+    name must be a string.  The getter must be a function returning an integer
+    for the symbol value.  If supplied, the setter must be a function that
+    accepts a single integer argument for the new value of the symbol.  A format
+    string for displaying the symbol value may optionally be supplied.  If a
+    symbol entry with the specified name already exists in the symbol table, it
+    will be replaced.
+
+    Returns the new :ref:`symbol entry <luareference-debug-symentry>`.
+symbols:add(name, minparams, maxparams, execute)
+    Adds a named function symbol.  The name must be a string.  The minimum and
+    maximum numbers of parameters must be integers.  If a symbol entry with the
+    specified name already exists in the symbol table, it will be replaced.
+
+    Returns the new :ref:`symbol entry <luareference-debug-symentry>`.
+symbols:find(name)
+    Returns the :ref:`symbol entry <luareference-debug-symentry>` with the
+    specified name, or ``nil`` if there is no symbol with the specified name in
+    the symbol table.
+symbols:find_deep(name)
+    Returns the :ref:`symbol entry <luareference-debug-symentry>` with the
+    specified name, or ``nil`` if there is no symbol with the specified name in
+    the symbol table or any of its parent symbol tables.
+symbols:value(name)
+    Returns the integer value of the symbol with the specified name, or zero if
+    there is no symbol with the specified name in the symbol table or any of its
+    parent symbol tables.  Raises an error if the symbol with specified name is
+    a function symbol.
+symbols:set_value(name, value)
+    Sets the value of the symbol with the specified name.  Raises an error if
+    the symbol with the specified name is a read-only integer symbol or if it is
+    a function symbol.  Has no effect if there is no symbol with the specified
+    name in the symbol table or any of its parent symbol tables.
+symbols:memory_value(name, space, offset, size, disable_se)
+    Read a value from memory.  Supply the name or tag of the address space or
+    memory region to read from, or ``nil`` to use the address space or memory
+    region implied by the ``space`` argument.  See
+    :ref:`memory accesses in debugger expressions <debugger-express-mem>` for
+    access type specifications that can be used for the ``space`` argument.
+    The access size is specified in bytes, and must be 1, 2, 4 or 8.  The
+    ``disable_se`` argument specifies whether memory access side effects should
+    be disabled.
+symbols:set_memory_value(name, space, offset, value, size, disable_se)
+    Write a value to memory.  Supply the name or tag of the address space or
+    memory region to write to, or ``nil`` to use the address space or memory
+    region implied by the ``space`` argument.  See
+    :ref:`memory accesses in debugger expressions <debugger-express-mem>` for
+    access type specifications that can be used for the ``space`` argument.
+    The access size is specified in bytes, and must be 1, 2, 4 or 8.  The
+    ``disable_se`` argument specifies whether memory access side effects should
+    be disabled.
+symbols:read_memory(space, address, size, apply_translation)
+    Read a value from an address space.  The access size is specified in bytes,
+    and must be 1, 2, 4, or 8.  If the ``apply_translation`` argument is true,
+    the address will be translated with debug read intention.  Returns a value
+    of the requested size with all bits set if address translation fails.
+symbols:write_memory(space, address, data, size, apply_translation)
+    Write a value to an address space.  The access size is specified in bytes,
+    and must be 1, 2, 4, or 8.  If the ``apply_translation`` argument is true,
+    the address will be translated with debug write intention.  The symbol
+    table’s memory modified function will be called after the value is written.
+    The value will not be written and the symbol table’s memory modified
+    function will not be called if address translation fails.
+
+Properties
+^^^^^^^^^^
+
+symbols.entries[]
+    The :ref:`symbol entries <luareference-debug-symentry>` in the symbol table,
+    indexed by name.  The ``at`` and ``index_of`` methods have O(n) complexity;
+    all other supported operations have O(1) complexity.
+symbols.parent (read-only)
+    The parent symbol table, or ``nil`` if the symbol table has no parent.
+
+.. _luareference-debug-expression:
+
+Parsed expression
+~~~~~~~~~~~~~~~~~
+
+Wraps MAME’s ``parsed_expression`` class, which represents a tokenised debugger
+expression.  Note that parsed expressions can be created and used even when the
+debugger is not enabled.
+
+Instantiation
+^^^^^^^^^^^^^
+
+emu.parsed_expression(symbols)
+    Creates an empty expression that will use the supplied
+    :ref:`symbol table <luareference-debug-symtable>` to look up symbols.
+emu.parsed_expression(symbols, string, [default_base])
+    Creates an expression by parsing the supplied string, looking up symbols in
+    the supplied :ref:`symbol table <luareference-debug-symtable>`.  If the
+    default base for interpreting integer literals is not supplied, 16 is used
+    (hexadecimal).  Raises an error if the string contains syntax errors or uses
+    undefined symbols.
+
+Methods
+^^^^^^^
+
+expression:set_default_base(base)
+    Set the default base for interpreting numeric literals.  The base must be a
+    positive integer.
+expression:parse(string)
+    Parse a debugger expression string.  Replaces the current contents of the
+    expression if it is not empty.  Raises an error if the string contains
+    syntax errors or uses undefined symbols.  The previous content of the
+    expression is not preserved when attempting to parse an invalid expression
+    string.
+expression:execute()
+    Evaluates the expression, returning an unsigned integer result.  Raises an
+    error if the expression cannot be evaluated (e.g. calling a function with an
+    invalid number of arguments).
+
+Properties
+^^^^^^^^^^
+
+expression.is_empty (read-only)
+    A Boolean indicating whether the expression contains no tokens.
+expression.original_string (read-only)
+    The original string that was parsed to create the expression.
+expression.symbols (read/write)
+    The :ref:`symbol table <luareference-debug-symtable>` used for to look up
+    symbols in the expression.
+
+.. _luareference-debug-symentry:
+
+Symbol entry
+~~~~~~~~~~~~
+
+Wraps MAME’s ``symbol_entry`` class, which represents an entry in a
+:ref:`symbol table <luareference-debug-symtable>`.  Note that symbol entries
+must not be used after the symbol table they belong to is destroyed.
+
+Instantiation
+^^^^^^^^^^^^^
+
+symbols:add(name, [value])
+    Adds an integer symbol to a
+    :ref:`symbol table <luareference-debug-symtable>`, returning the new symbol
+    entry.
+symbols:add(name, getter, [setter], [format])
+    Adds an integer symbol to a
+    :ref:`symbol table <luareference-debug-symtable>`, returning the new symbol
+    entry.
+symbols:add(name, minparams, maxparams, execute)
+    Adds function symbol to a
+    :ref:`symbol table <luareference-debug-symtable>`, returning the new symbol
+    entry.
+
+Properties
+^^^^^^^^^^
+
+entry.name (read-only)
+    The name of the symbol entry.
+entry.format (read-only)
+    The format string used to convert the symbol entry to text for display.
+entry.is_function (read-only)
+    A Boolean indicating whether the symbol entry is a callable function.
+entry.is_lval (read-only)
+    A Boolean indicating whether the symbol entry is an integer symbol that can
+    be set (i.e. whether it can be used on the left-hand side of assignment
+    expressions).
+entry.value (read/write)
+    The integer value of the symbol entry.  Attempting to set the value raises
+    an error if the symbol entry is read-only.  Attempting to get or set the
+    value of a function symbol raises an error.
 
 .. _luareference-debug-manager:
 
@@ -3035,7 +4073,7 @@ emulated CPU device.
 Instantiation
 ^^^^^^^^^^^^^
 
-manager.machine.devices[tag]:debug()
+manager.machine.devices[tag].debug
     Returns the debugger interface for an emulated CPU device, or ``nil`` if the
     device is not a CPU.
 
@@ -3120,7 +4158,7 @@ emulated CPU device.
 Instantiation
 ^^^^^^^^^^^^^
 
-manager.machine.devices[tag]:debug():bplist()[bp]
+manager.machine.devices[tag].debug:bplist()[bp]
     Gets the specified breakpoint for an emulated CPU device, or ``nil`` if no
     breakpoint corresponds to the specified index.
 
@@ -3131,7 +4169,7 @@ breakpoint.index (read-only)
     The breakpoint’s index.  The can be used to enable, disable or clear the
     breakpoint via the
     :ref:`CPU debugger interface <luareference-debug-devdebug>`.
-breakpoint.enabled (read-only)
+breakpoint.enabled (read/write)
     A Boolean indicating whether the breakpoint is currently enabled.
 breakpoint.address (read-only)
     The breakpoint’s address.
@@ -3154,7 +4192,7 @@ emulated CPU device.
 Instantiation
 ^^^^^^^^^^^^^
 
-manager.machine.devices[tag]:debug():wplist(space)[wp]
+manager.machine.devices[tag].debug:wplist(space)[wp]
     Gets the specified watchpoint for an address space of an emulated CPU
     device, or ``nil`` if no watchpoint in the address space corresponds to the
     specified index.
@@ -3166,7 +4204,7 @@ watchpoint.index (read-only)
     The watchpoint’s index.  The can be used to enable, disable or clear the
     watchpoint via the
     :ref:`CPU debugger interface <luareference-debug-devdebug>`.
-watchpoint.enabled (read-only)
+watchpoint.enabled (read/write)
     A Boolean indicating whether the watchpoint is currently enabled.
 watchpoint.type (read-only)
     Either ``"r"``, ``"w"`` or ``"rw"`` for a read, write or read/write

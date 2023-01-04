@@ -59,8 +59,8 @@ void ics2115_device::device_start()
 
 	space(0).cache(m_cache);
 
-	m_timer[0].timer = machine().scheduler().timer_alloc(timer_expired_delegate(FUNC(ics2115_device::timer_cb_0),this), this);
-	m_timer[1].timer = machine().scheduler().timer_alloc(timer_expired_delegate(FUNC(ics2115_device::timer_cb_1),this), this);
+	m_timer[0].timer = timer_alloc(FUNC(ics2115_device::timer_cb_0), this);
+	m_timer[1].timer = timer_alloc(FUNC(ics2115_device::timer_cb_1), this);
 	m_stream = stream_alloc(0, 2, clock() / (32 * 32));
 
 	m_irq_cb.resolve_safe();
@@ -434,8 +434,8 @@ int ics2115_device::fill_output(ics2115_voice& voice, std::vector<write_stream_v
 	{
 		constexpr int RAMP_SHIFT = 6;
 		const u32 volacc = (voice.vol.acc >> 14) & 0xfff;
-		const u16 vlefti = volacc - m_panlaw[255 - voice.vol.pan]; // left index from acc - pan law
-		const u16 vrighti = volacc - m_panlaw[voice.vol.pan]; // right index from acc - pan law
+		const s16 vlefti = volacc - m_panlaw[255 - voice.vol.pan]; // left index from acc - pan law
+		const s16 vrighti = volacc - m_panlaw[voice.vol.pan]; // right index from acc - pan law
 		//check negative values so no cracks, is it a hardware feature ?
 		const u16 vleft = vlefti > 0 ? (m_volume[vlefti] * voice.state.ramp >> RAMP_SHIFT) : 0;
 		const u16 vright = vrighti > 0 ? (m_volume[vrighti] * voice.state.ramp >> RAMP_SHIFT) : 0;
@@ -448,10 +448,9 @@ int ics2115_device::fill_output(ics2115_voice& voice, std::vector<write_stream_v
 		s32 sample = get_sample(voice);
 
 		//15-bit volume + (5-bit worth of 32 channel sum) + 16-bit samples = 4-bit extra
+		//if (voice.playing())
 		if (!m_vmode || voice.playing())
 		{
-		/*if (voice.playing())
-		{*/
 			outputs[0].add_int(i, (sample * vleft) >> (5 + volume_bits), 32768);
 			outputs[1].add_int(i, (sample * vright) >> (5 + volume_bits), 32768);
 		}
@@ -618,7 +617,8 @@ u16 ics2115_device::reg_read()
 			ret = m_active_osc;
 			break;
 
-		case 0x0f:{// [osc] Interrupt source/oscillator
+		case 0x0f: // [osc] Interrupt source/oscillator
+		{
 			ret = 0xff;
 			for (int i = 0; i <= m_active_osc; i++)
 			{
@@ -643,7 +643,8 @@ u16 ics2115_device::reg_read()
 				}
 			}
 			ret <<= 8;
-			break;}
+			break;
+		}
 
 		case 0x10: // [osc] Oscillator Control
 			ret = voice.osc.ctl << 8;
@@ -1079,7 +1080,7 @@ void ics2115_device::recalc_irq()
 	//Suspect
 	bool irq = (m_irq_pending & m_irq_enabled);
 	for (int i = 0; (!irq) && (i < 32); i++)
-		irq |=  m_voice[i].vol_ctrl.bitflags.irq_pending && m_voice[i].osc_conf.bitflags.irq_pending;
+		irq |= m_voice[i].vol_ctrl.bitflags.irq_pending && m_voice[i].osc_conf.bitflags.irq_pending;
 	m_irq_on = irq;
 	if (!m_irq_cb.isnull())
 		m_irq_cb(irq ? ASSERT_LINE : CLEAR_LINE);
@@ -1087,33 +1088,32 @@ void ics2115_device::recalc_irq()
 
 TIMER_CALLBACK_MEMBER( ics2115_device::timer_cb_0 )
 {
-	m_irq_pending |= 1 << 0;
-	recalc_irq();
+	if (!(m_irq_pending & (1 << 0)))
+	{
+		m_irq_pending |= 1 << 0;
+		recalc_irq();
+	}
 }
 
 TIMER_CALLBACK_MEMBER( ics2115_device::timer_cb_1 )
 {
-	m_irq_pending |= 1 << 1;
-	recalc_irq();
+	if (!(m_irq_pending & (1 << 1)))
+	{
+		m_irq_pending |= 1 << 1;
+		recalc_irq();
+	}
 }
 
 void ics2115_device::recalc_timer(int timer)
 {
-	//Old regression-based formula (minus constant)
-	//u64 period = m_timer[timer].preset * (m_timer[timer].scale << 16) / 60;
-
-	//New formula based on O.Galibert's reverse engineering of ICS2115 card firmware
-	// TODO : Related to input clock?
 	u64 period  = ((m_timer[timer].scale & 0x1f) + 1) * (m_timer[timer].preset + 1);
-	period = (period << (4 + (m_timer[timer].scale >> 5)))*78125/2646;
+	period = period << (4 + (m_timer[timer].scale >> 5));
 
 	if (m_timer[timer].period != period)
 	{
+		attotime tp = attotime::from_ticks(period, clock());
+		logerror("Timer %d period %dns (%dHz)\n", timer, int(tp.as_double()*1e9), int(1/tp.as_double()));
 		m_timer[timer].period = period;
-		// Adjust the timer lengths
-		if (period) // Reset the length
-			m_timer[timer].timer->adjust(attotime::from_nsec(period), 0, attotime::from_nsec(period));
-		else // Kill the timer if length == 0
-			m_timer[timer].timer->adjust(attotime::never);
+		m_timer[timer].timer->adjust(tp, 0, tp);
 	}
 }

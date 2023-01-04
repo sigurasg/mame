@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <!DOCTYPE softwarelist SYSTEM "softwarelist.dtd">
 <!--
-license:CC0
+license:CC0-1.0
 
 NOTE: This list is here only to document available dumps and it's not used (yet) by MAME!
 
@@ -1430,6 +1430,23 @@ kanji name, romaji name, manufacturer, release date in %MMM %YY format, notes
 		<part name="cass2" interface="pc8801_cass">
 			<dataarea name="cass" size="74824">
 				<rom name="kido senshi gundam 2 2.t88" size="74824" crc="668c55d9" sha1="640275f3cb50a2b7d7a2e156bf1215324cef548a"/>
+			</dataarea>
+		</part>
+	</software>
+
+	<!--
+	    Originally published as a type-in program in the October 1985 issue of LOGiN Magazine.
+	    Game programmed by Hiromichi Tanaka, converted to t88 format by Dustin Hubbard / Gaming Alexandria.
+	-->
+	<software name="3156coro2">
+		<description>3156 Coro Coro</description>
+		<year>1985</year>
+		<publisher>スクウェア (Square) / アスキー (ASCII)</publisher>
+		<info name="release" value="198510xx"/>
+		<info name="alt_title" value="サイコロコロコロ"/>
+		<part name="cass" interface="pc8801_cass">
+			<dataarea name="cass" size="39765">
+				<rom name="3156 Coro Coro.t88" size="39765" crc="fe75afd7" sha1="53416e69807eb5e24e09fbef9ee11ee52b542c56"/>
 			</dataarea>
 		</part>
 	</software>

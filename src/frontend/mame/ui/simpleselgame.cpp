@@ -20,6 +20,7 @@
 #include "audit.h"
 #include "drivenum.h"
 #include "emuopts.h"
+#include "fileio.h"
 #include "mame.h"
 #include "uiinput.h"
 
@@ -131,6 +132,10 @@ void simple_menu_select_game::handle(event const *ev)
 			case IPT_UI_CANCEL:
 				inkey_cancel();
 				break;
+			case IPT_UI_PASTE:
+				if (paste_text(m_search, uchar_is_printable))
+					reset(reset_options::SELECT_FIRST);
+				break;
 			case IPT_SPECIAL:
 				inkey_special(*ev);
 				break;
@@ -217,7 +222,7 @@ void simple_menu_select_game::inkey_cancel()
 void simple_menu_select_game::inkey_special(const event &menu_event)
 {
 	// typed characters append to the buffer
-	size_t old_size = m_search.size();
+	size_t const old_size = m_search.size();
 	if (input_character(m_search, menu_event.unichar, uchar_is_printable))
 	{
 		if (m_search.size() < old_size)
@@ -279,8 +284,8 @@ void simple_menu_select_game::populate(float &customtop, float &custombottom)
 	}
 
 	// configure the custom rendering
-	customtop = ui().get_line_height() + 3.0f * ui().box_tb_border();
-	custombottom = 4.0f * ui().get_line_height() + 3.0f * ui().box_tb_border();
+	customtop = line_height() + 3.0f * tb_border();
+	custombottom = 4.0f * line_height() + 3.0f * tb_border();
 }
 
 
@@ -296,13 +301,13 @@ void simple_menu_select_game::custom_render(void *selectedref, float top, float 
 		ui().draw_text_box(
 				container(),
 				string_format(
-						_("No machines found. Please check the rompath specified in the %1$s.ini file.\n\n"
-						"If this is your first time using %2$s, please see the config.txt file in "
-						"the docs directory for information on configuring %2$s."),
+						_("No system ROMs found. Please check the rompath setting specified in the %1$s.ini file.\n\n"
+						"If this is your first time using %2$s, please see the %2$s.pdf file in "
+						"the docs folder for information on setting up and using %2$s."),
 						emulator_info::get_configname(),
 						emulator_info::get_appname()),
 				text_layout::text_justify::CENTER,
-				0.5f, origy2 + ui().box_tb_border() + (0.5f * (bottom - ui().box_tb_border())),
+				0.5f, origy2 + tb_border() + (0.5f * (bottom - tb_border())),
 				UI_RED_COLOR);
 		return;
 	}
@@ -319,9 +324,9 @@ void simple_menu_select_game::custom_render(void *selectedref, float top, float 
 	// draw the top box
 	draw_text_box(
 			tempbuf, tempbuf + 1,
-			origx1, origx2, origy1 - top, origy1 - ui().box_tb_border(),
+			origx1, origx2, origy1 - top, origy1 - tb_border(),
 			text_layout::text_justify::CENTER, text_layout::word_wrapping::TRUNCATE, false,
-			ui().colors().text_color(), ui().colors().background_color(), 1.0f);
+			ui().colors().text_color(), ui().colors().background_color());
 
 	// determine the text to render below
 	driver = ((uintptr_t)selectedref > 1) ? (const game_driver *)selectedref : nullptr;
@@ -334,7 +339,13 @@ void simple_menu_select_game::custom_render(void *selectedref, float top, float 
 		tempbuf[1] = string_format(_("%1$s, %2$-.100s"), driver->year, driver->manufacturer);
 
 		// next line source path
-		tempbuf[2] = string_format(_("Driver: %1$s"), core_filename_extract_base(driver->type.source()));
+		std::string_view src(driver->type.source());
+		auto prefix(src.find("src/mame/"));
+		if (std::string_view::npos == prefix)
+			prefix = src.find("src\\mame\\");
+		if (std::string_view::npos != prefix)
+			src.remove_prefix(prefix + 9);
+		tempbuf[2] = string_format(_("Driver: %1$s"), src);
 
 		// update cached values if selection changed
 		if (driver != m_cached_driver)
@@ -401,9 +412,9 @@ void simple_menu_select_game::custom_render(void *selectedref, float top, float 
 	// draw the bottom box
 	draw_text_box(
 			tempbuf, tempbuf + 4,
-			origx1, origx2, origy2 + ui().box_tb_border(), origy2 + bottom,
+			origx1, origx2, origy2 + tb_border(), origy2 + bottom,
 			text_layout::text_justify::CENTER, text_layout::word_wrapping::TRUNCATE, true,
-			ui().colors().text_color(), driver ? m_cached_color : ui().colors().background_color(), 1.0f);
+			ui().colors().text_color(), driver ? m_cached_color : ui().colors().background_color());
 }
 
 

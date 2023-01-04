@@ -11,6 +11,11 @@ Hardware notes:
 - Fujitsu MB86930-20 SPARClite @ 20MHz
 - 256KB ROM (4*AMD AM27C512)
 - 1MB DRAM (8*NEC 424256-60), expandable to 4MB
+- ESAN 31A-5500 delay line (only on newer PCB)
+
+Two PCB revisions are known, the older one is a lighter green PCB, it has
+empty positions for more ICs (maybe expanded RAM?), and does not have a
+delay line chip.
 
 The module doesn't have its own LCD screen. It has a grill+fan underneath
 at the front part, and a heatsink on the CPU.
@@ -184,5 +189,5 @@ void saitekosa_sparc_device::nmi_w(int state)
 void saitekosa_sparc_device::ack_w(int state)
 {
 	if (state != m_expansion->ack_state())
-		machine().scheduler().boost_interleave(attotime::zero, attotime::from_usec(100));
+		machine().scheduler().perfect_quantum(attotime::from_usec(100));
 }

@@ -36,6 +36,7 @@ class output_module;
 // declared in osdepend.h
 class osd_font;
 class osd_interface;
+class osd_midi_device;
 
 
 
@@ -98,6 +99,7 @@ class symbol_table;
 class debug_breakpoint;
 class debug_watchpoint;
 class debug_registerpoint;
+class debug_exceptionpoint;
 
 // declared in debugger.h
 class debugger_manager;
@@ -129,6 +131,9 @@ class device_image_interface;
 // declared in dimemory.h
 class device_memory_interface;
 
+// declared in dinetwork.h
+class device_network_interface;
+
 // declared in dipalette.h
 class device_palette_interface;
 
@@ -151,6 +156,12 @@ class memory_view;
 
 // declared in emuopts.h
 class emu_options;
+
+// declared in fileio.h
+class emu_file;
+
+// declared in http.h
+class http_manager;
 
 // declared in gamedrv.h
 class game_driver;
@@ -181,6 +192,7 @@ class running_machine;
 
 // declared in mconfig.h
 namespace emu::detail { class machine_config_replace; }
+struct internal_layout;
 class machine_config;
 
 // declared in natkeyboard.h

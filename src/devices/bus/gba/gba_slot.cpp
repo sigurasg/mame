@@ -504,11 +504,11 @@ void device_gba_cart_interface::rom_alloc(uint32_t size, const char *tag)
 	{
 		if (size < 0x4000000)
 		// we always alloc 32MB of rom region!
-			m_rom = (uint32_t *)device().machine().memory().region_alloc(std::string(tag).append(GBASLOT_ROM_REGION_TAG).c_str(), 0x2000000, 4, ENDIANNESS_LITTLE)->base();
+			m_rom = (uint32_t *)device().machine().memory().region_alloc(std::string(tag).append(GBASLOT_ROM_REGION_TAG), 0x2000000, 4, ENDIANNESS_LITTLE)->base();
 		else
 		{
-			m_rom = (uint32_t *)device().machine().memory().region_alloc(std::string(tag).append(GBASLOT_ROM_REGION_TAG).c_str(), 0x4000000, 4, ENDIANNESS_LITTLE)->base();
-			m_romhlp = (uint32_t *)device().machine().memory().region_alloc(std::string(tag).append(GBAHELP_ROM_REGION_TAG).c_str(), 0x2000000, 4, ENDIANNESS_LITTLE)->base();
+			m_rom = (uint32_t *)device().machine().memory().region_alloc(std::string(tag).append(GBASLOT_ROM_REGION_TAG), 0x4000000, 4, ENDIANNESS_LITTLE)->base();
+			m_romhlp = (uint32_t *)device().machine().memory().region_alloc(std::string(tag).append(GBAHELP_ROM_REGION_TAG), 0x2000000, 4, ENDIANNESS_LITTLE)->base();
 		}
 		m_rom_size = size;
 	}
@@ -534,7 +534,7 @@ void device_gba_cart_interface::nvram_alloc(uint32_t size)
 //-------------------------------------------------
 gba_cart_slot_device::gba_cart_slot_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock) :
 	device_t(mconfig, GBA_CART_SLOT, tag, owner, clock),
-	device_image_interface(mconfig, *this),
+	device_cartrom_image_interface(mconfig, *this),
 	device_slot_interface(mconfig, *this),
 	m_type(GBA_STD),
 	m_cart(nullptr)

@@ -19,6 +19,7 @@
 
 #include "debugger.h"
 #include "emuopts.h"
+#include "fileio.h"
 #include "screen.h"
 #include "uiinput.h"
 
@@ -46,6 +47,7 @@ debugger_cpu::debugger_cpu(running_machine &machine)
 	, m_bpindex(1)
 	, m_wpindex(1)
 	, m_rpindex(1)
+	, m_epindex(1)
 	, m_wpdata(0)
 	, m_wpaddr(0)
 	, m_wpsize(0)
@@ -423,9 +425,9 @@ device_debug::device_debug(device_t &device)
 	, m_disasm(nullptr)
 	, m_flags(0)
 	, m_symtable(std::make_unique<symbol_table>(device.machine(), &device.machine().debugger().cpu().global_symtable(), &device))
-	, m_instrhook(nullptr)
 	, m_stepaddr(0)
 	, m_stepsleft(0)
+	, m_delay_steps(0)
 	, m_stopaddr(0)
 	, m_stoptime(attotime::zero)
 	, m_stopirq(0)
@@ -436,7 +438,8 @@ device_debug::device_debug(device_t &device)
 	, m_pc_history_index(0)
 	, m_pc_history_valid(0)
 	, m_bplist()
-	, m_rplist(std::make_unique<std::forward_list<debug_registerpoint>>())
+	, m_rplist()
+	, m_eplist()
 	, m_triggered_breakpoint(nullptr)
 	, m_triggered_watchpoint(nullptr)
 	, m_trace(nullptr)
@@ -458,14 +461,14 @@ device_debug::device_debug(device_t &device)
 	// set up notifiers and clear the passthrough handlers
 	if (m_memory) {
 		int count = m_memory->max_space_count();
-		m_phw.resize(count, nullptr);
+		m_phw.resize(count);
 		for (int i=0; i != count; i++)
 			if (m_memory->has_space(i)) {
 				address_space &space = m_memory->space(i);
-				m_notifiers.push_back(space.add_change_notifier([this, &space](read_or_write mode) { reinstall(space, mode); }));
+				m_notifiers.emplace_back(space.add_change_notifier([this, &space] (read_or_write mode) { reinstall(space, mode); }));
 			}
 			else
-				m_notifiers.push_back(-1);
+				m_notifiers.emplace_back();
 	}
 
 	// set up state-related stuff
@@ -547,6 +550,7 @@ device_debug::~device_debug()
 	breakpoint_clear_all();
 	watchpoint_clear_all();
 	registerpoint_clear_all();
+	exceptionpoint_clear_all();
 }
 
 void device_debug::write_tracking(address_space &space, offs_t address, u64 data)
@@ -562,15 +566,14 @@ void device_debug::reinstall(address_space &space, read_or_write mode)
 	int id = space.spacenum();
 	if (u32(mode) & u32(read_or_write::WRITE))
 	{
-		if (m_phw[id])
-			m_phw[id]->remove();
+		m_phw[id].remove();
 		if (m_track_mem)
 			switch (space.data_width())
 			{
-			case  8: m_phw[id] = space.install_write_tap(0, space.addrmask(), "track_mem", [this, &space](offs_t address, u8  &data, u8 ) { write_tracking(space, address, data); }, m_phw[id]); break;
-			case 16: m_phw[id] = space.install_write_tap(0, space.addrmask(), "track_mem", [this, &space](offs_t address, u16 &data, u16) { write_tracking(space, address, data); }, m_phw[id]); break;
-			case 32: m_phw[id] = space.install_write_tap(0, space.addrmask(), "track_mem", [this, &space](offs_t address, u32 &data, u32) { write_tracking(space, address, data); }, m_phw[id]); break;
-			case 64: m_phw[id] = space.install_write_tap(0, space.addrmask(), "track_mem", [this, &space](offs_t address, u64 &data, u64) { write_tracking(space, address, data); }, m_phw[id]); break;
+			case  8: m_phw[id] = space.install_write_tap(0, space.addrmask(), "track_mem", [this, &space] (offs_t address, u8  &data, u8 ) { write_tracking(space, address, data); }, &m_phw[id]); break;
+			case 16: m_phw[id] = space.install_write_tap(0, space.addrmask(), "track_mem", [this, &space] (offs_t address, u16 &data, u16) { write_tracking(space, address, data); }, &m_phw[id]); break;
+			case 32: m_phw[id] = space.install_write_tap(0, space.addrmask(), "track_mem", [this, &space] (offs_t address, u32 &data, u32) { write_tracking(space, address, data); }, &m_phw[id]); break;
+			case 64: m_phw[id] = space.install_write_tap(0, space.addrmask(), "track_mem", [this, &space] (offs_t address, u64 &data, u64) { write_tracking(space, address, data); }, &m_phw[id]); break;
 			}
 	}
 }
@@ -671,8 +674,37 @@ void device_debug::exception_hook(int exception)
 		if (matched)
 		{
 			m_device.machine().debugger().cpu().set_execution_stopped();
-			m_device.machine().debugger().console().printf("Stopped on exception (CPU '%s', exception %d, PC=%X)\n", m_device.tag(), exception, m_state->pcbase());
+			m_device.machine().debugger().console().printf("Stopped on exception (CPU '%s', exception %X, PC=%X)\n", m_device.tag(), exception, m_state->pcbase());
 			compute_debug_flags();
+		}
+	}
+
+	// see if any exception points match
+	if (!m_eplist.empty())
+	{
+		auto epitp = m_eplist.equal_range(exception);
+		for (auto epit = epitp.first; epit != epitp.second; ++epit)
+		{
+			debug_exceptionpoint &ep = *epit->second;
+			if (ep.hit(exception))
+			{
+				// halt in the debugger by default
+				debugger_cpu &debugcpu = m_device.machine().debugger().cpu();
+				debugcpu.set_execution_stopped();
+
+				// if we hit, evaluate the action
+				if (!ep.m_action.empty())
+					m_device.machine().debugger().console().execute_command(ep.m_action, false);
+
+				// print a notification, unless the action made us go again
+				if (debugcpu.is_stopped())
+				{
+					debugcpu.set_execution_stopped();
+					m_device.machine().debugger().console().printf("Stopped at exception point %X (CPU '%s', PC=%X)\n", ep.m_index, m_device.tag(), exception, m_state->pcbase());
+					compute_debug_flags();
+				}
+				break;
+			}
 		}
 	}
 }
@@ -688,11 +720,11 @@ void device_debug::privilege_hook()
 	if ((m_flags & DEBUG_FLAG_STOP_PRIVILEGE) != 0)
 	{
 		bool matched = true;
-		if (m_privilege_condition && !m_privilege_condition->is_empty())
+		if (m_stop_condition && !m_stop_condition->is_empty())
 		{
 			try
 			{
-				matched = m_privilege_condition->execute();
+				matched = m_stop_condition->execute();
 			}
 			catch (expression_error &)
 			{
@@ -743,26 +775,56 @@ void device_debug::instruction_hook(offs_t curpc)
 	if (m_trace != nullptr)
 		m_trace->update(curpc);
 
-	// per-instruction hook?
-	if (!debugcpu.is_stopped() && (m_flags & DEBUG_FLAG_HOOKED) != 0 && (*m_instrhook)(m_device, curpc))
-		debugcpu.set_execution_stopped();
-
 	// handle single stepping
 	if (!debugcpu.is_stopped() && (m_flags & DEBUG_FLAG_STEPPING_ANY) != 0)
 	{
-		// is this an actual step?
-		if (m_stepaddr == ~0 || curpc == m_stepaddr)
+		bool do_step = true;
+		if ((m_flags & (DEBUG_FLAG_CALL_IN_PROGRESS | DEBUG_FLAG_TEST_IN_PROGRESS)) != 0)
 		{
-			// decrement the count and reset the breakpoint
+			if (curpc == m_stepaddr)
+			{
+				if ((~m_flags & (DEBUG_FLAG_TEST_IN_PROGRESS | DEBUG_FLAG_STEPPING_BRANCH_FALSE)) == 0)
+				{
+					debugcpu.set_execution_stopped();
+					do_step = false;
+				}
+
+				// reset the breakpoint
+				m_flags &= ~(DEBUG_FLAG_CALL_IN_PROGRESS | DEBUG_FLAG_TEST_IN_PROGRESS);
+				m_delay_steps = 0;
+			}
+			else if (m_delay_steps != 0)
+			{
+				m_delay_steps--;
+				if (m_delay_steps == 0)
+				{
+					// branch taken or subroutine entered (TODO: interrupt acknowledgment or interleaved multithreading can falsely trigger this)
+					if ((m_flags & DEBUG_FLAG_TEST_IN_PROGRESS) != 0 && (m_flags & (DEBUG_FLAG_STEPPING_OUT | DEBUG_FLAG_STEPPING_BRANCH_TRUE)) != 0)
+					{
+						debugcpu.set_execution_stopped();
+						do_step = false;
+					}
+					if ((m_flags & DEBUG_FLAG_CALL_IN_PROGRESS) != 0)
+						do_step = false;
+					m_flags &= ~DEBUG_FLAG_TEST_IN_PROGRESS;
+				}
+			}
+			else
+				do_step = false;
+		}
+
+		// is this an actual step?
+		if (do_step)
+		{
+			// decrement the count
 			m_stepsleft--;
-			m_stepaddr = ~0;
 
 			// if we hit 0, stop
 			if (m_stepsleft == 0)
 				debugcpu.set_execution_stopped();
 
 			// update every 100 steps until we are within 200 of the end
-			else if ((m_flags & DEBUG_FLAG_STEPPING_OUT) == 0 && (m_stepsleft < 200 || m_stepsleft % 100 == 0))
+			else if ((m_flags & (DEBUG_FLAG_STEPPING_OUT | DEBUG_FLAG_STEPPING_BRANCH_TRUE | DEBUG_FLAG_STEPPING_BRANCH_FALSE)) == 0 && (m_stepsleft < 200 || m_stepsleft % 100 == 0))
 			{
 				machine.debug_view().update_all();
 				machine.debug_view().flush_osd_updates();
@@ -849,27 +911,11 @@ void device_debug::instruction_hook(offs_t curpc)
 	}
 
 	// handle step out/over on the instruction we are about to execute
-	if ((m_flags & (DEBUG_FLAG_STEPPING_OVER | DEBUG_FLAG_STEPPING_OUT)) != 0 && m_stepaddr == ~0)
+	if ((m_flags & (DEBUG_FLAG_STEPPING_OVER | DEBUG_FLAG_STEPPING_OUT | DEBUG_FLAG_STEPPING_BRANCH)) != 0 && (m_flags & (DEBUG_FLAG_CALL_IN_PROGRESS | DEBUG_FLAG_TEST_IN_PROGRESS)) == 0)
 		prepare_for_step_overout(m_state->pcbase());
 
 	// no longer in debugger code
 	debugcpu.set_within_instruction(false);
-}
-
-
-//-------------------------------------------------
-//  set_instruction_hook - set a hook to be
-//  called on each instruction for a given device
-//-------------------------------------------------
-
-void device_debug::set_instruction_hook(debug_instruction_hook_func hook)
-{
-	// set the hook and also the CPU's flag for fast knowledge of the hook
-	m_instrhook = hook;
-	if (hook != nullptr)
-		m_flags |= DEBUG_FLAG_HOOKED;
-	else
-		m_flags &= ~DEBUG_FLAG_HOOKED;
 }
 
 
@@ -928,8 +974,9 @@ void device_debug::single_step(int numsteps)
 
 	m_device.machine().rewind_capture();
 	m_stepsleft = numsteps;
-	m_stepaddr = ~0;
+	m_delay_steps = 0;
 	m_flags |= DEBUG_FLAG_STEPPING;
+	m_flags &= ~(DEBUG_FLAG_CALL_IN_PROGRESS | DEBUG_FLAG_TEST_IN_PROGRESS);
 	m_device.machine().debugger().cpu().set_execution_running();
 }
 
@@ -945,8 +992,9 @@ void device_debug::single_step_over(int numsteps)
 
 	m_device.machine().rewind_capture();
 	m_stepsleft = numsteps;
-	m_stepaddr = ~0;
+	m_delay_steps = 0;
 	m_flags |= DEBUG_FLAG_STEPPING_OVER;
+	m_flags &= ~(DEBUG_FLAG_CALL_IN_PROGRESS | DEBUG_FLAG_TEST_IN_PROGRESS);
 	m_device.machine().debugger().cpu().set_execution_running();
 }
 
@@ -961,9 +1009,11 @@ void device_debug::single_step_out()
 	assert(m_exec != nullptr);
 
 	m_device.machine().rewind_capture();
+	m_stop_condition.reset();
 	m_stepsleft = 100;
-	m_stepaddr = ~0;
+	m_delay_steps = 0;
 	m_flags |= DEBUG_FLAG_STEPPING_OUT;
+	m_flags &= ~(DEBUG_FLAG_CALL_IN_PROGRESS | DEBUG_FLAG_TEST_IN_PROGRESS);
 	m_device.machine().debugger().cpu().set_execution_running();
 }
 
@@ -1060,8 +1110,26 @@ void device_debug::go_privilege(const char *condition)
 {
 	assert(m_exec != nullptr);
 	m_device.machine().rewind_invalidate();
-	m_privilege_condition = std::make_unique<parsed_expression>(*m_symtable, condition);
+	m_stop_condition = std::make_unique<parsed_expression>(*m_symtable, condition);
 	m_flags |= DEBUG_FLAG_STOP_PRIVILEGE;
+	m_device.machine().debugger().cpu().set_execution_running();
+}
+
+
+//-------------------------------------------------
+//  go_branch - execute until branch taken or
+//  not taken
+//-------------------------------------------------
+
+void device_debug::go_branch(bool sense, const char *condition)
+{
+	assert(m_exec != nullptr);
+	m_device.machine().rewind_invalidate();
+	m_stop_condition = std::make_unique<parsed_expression>(*m_symtable, condition);
+	m_stepsleft = 100;
+	m_delay_steps = 0;
+	m_flags |= sense ? DEBUG_FLAG_STEPPING_BRANCH_TRUE : DEBUG_FLAG_STEPPING_BRANCH_FALSE;
+	m_flags &= ~(DEBUG_FLAG_CALL_IN_PROGRESS | DEBUG_FLAG_TEST_IN_PROGRESS);
 	m_device.machine().debugger().cpu().set_execution_running();
 }
 
@@ -1098,7 +1166,7 @@ const debug_breakpoint *device_debug::breakpoint_find(offs_t address) const
 //  returning its index
 //-------------------------------------------------
 
-int device_debug::breakpoint_set(offs_t address, const char *condition, const char *action)
+int device_debug::breakpoint_set(offs_t address, const char *condition, std::string_view action)
 {
 	// allocate a new one and hook it into our list
 	u32 id = m_device.machine().debugger().cpu().get_breakpoint_index();
@@ -1185,7 +1253,7 @@ void device_debug::breakpoint_enable_all(bool enable)
 //  returning its index
 //-------------------------------------------------
 
-int device_debug::watchpoint_set(address_space &space, read_or_write type, offs_t address, offs_t length, const char *condition, const char *action)
+int device_debug::watchpoint_set(address_space &space, read_or_write type, offs_t address, offs_t length, const char *condition, std::string_view action)
 {
 	if (space.spacenum() >= int(m_wplist.size()))
 		m_wplist.resize(space.spacenum()+1);
@@ -1272,15 +1340,15 @@ void device_debug::watchpoint_enable_all(bool enable)
 //  returning its index
 //-------------------------------------------------
 
-int device_debug::registerpoint_set(const char *condition, const char *action)
+int device_debug::registerpoint_set(const char *condition, std::string_view action)
 {
 	// allocate a new one
 	u32 id = m_device.machine().debugger().cpu().get_registerpoint_index();
-	m_rplist->emplace_front(*m_symtable, id, condition, action);
+	m_rplist.emplace_front(*m_symtable, id, condition, action);
 
 	// update the flags and return the index
 	breakpoint_update_flags();
-	return m_rplist->front().m_index;
+	return m_rplist.front().m_index;
 }
 
 
@@ -1292,10 +1360,10 @@ int device_debug::registerpoint_set(const char *condition, const char *action)
 bool device_debug::registerpoint_clear(int index)
 {
 	// scan the list to see if we own this registerpoint
-	for (auto brp = m_rplist->before_begin(); std::next(brp) != m_rplist->end(); ++brp)
+	for (auto brp = m_rplist.before_begin(); std::next(brp) != m_rplist.end(); ++brp)
 		if (std::next(brp)->m_index == index)
 		{
-			m_rplist->erase_after(brp);
+			m_rplist.erase_after(brp);
 			breakpoint_update_flags();
 			return true;
 		}
@@ -1312,7 +1380,7 @@ bool device_debug::registerpoint_clear(int index)
 void device_debug::registerpoint_clear_all()
 {
 	// clear the list
-	m_rplist->clear();
+	m_rplist.clear();
 	breakpoint_update_flags();
 }
 
@@ -1325,7 +1393,7 @@ void device_debug::registerpoint_clear_all()
 bool device_debug::registerpoint_enable(int index, bool enable)
 {
 	// scan the list to see if we own this conditionpoint
-	for (debug_registerpoint &rp : *m_rplist)
+	for (debug_registerpoint &rp : m_rplist)
 		if (rp.m_index == index)
 		{
 			rp.m_enabled = enable;
@@ -1346,8 +1414,93 @@ bool device_debug::registerpoint_enable(int index, bool enable)
 void device_debug::registerpoint_enable_all(bool enable)
 {
 	// apply the enable to all registerpoints we own
-	for (debug_registerpoint &rp : *m_rplist)
+	for (debug_registerpoint &rp : m_rplist)
 		registerpoint_enable(rp.index(), enable);
+}
+
+
+//-------------------------------------------------
+//  exceptionpoint_set - set a new exception
+//  point, returning its index
+//-------------------------------------------------
+
+int device_debug::exceptionpoint_set(int exception, const char *condition, std::string_view action)
+{
+	// allocate a new one and hook it into our list
+	u32 id = m_device.machine().debugger().cpu().get_exceptionpoint_index();
+	m_eplist.emplace(exception, std::make_unique<debug_exceptionpoint>(this, *m_symtable, id, exception, condition, action));
+
+	// return the index
+	return id;
+}
+
+
+//-------------------------------------------------
+//  exceptionpoint_clear - clear an exception
+//  point by index, returning true if we found it
+//-------------------------------------------------
+
+bool device_debug::exceptionpoint_clear(int index)
+{
+	// scan the list to see if we own this breakpoint
+	for (auto epit = m_eplist.begin(); epit != m_eplist.end(); ++epit)
+		if (epit->second->m_index == index)
+		{
+			m_eplist.erase(epit);
+			return true;
+		}
+
+	// we don't own it, return false
+	return false;
+}
+
+
+//-------------------------------------------------
+//  exceptionpoint_clear_all - clear all exception
+//  points
+//-------------------------------------------------
+
+void device_debug::exceptionpoint_clear_all()
+{
+	// clear the list
+	m_eplist.clear();
+}
+
+
+//-------------------------------------------------
+//  exceptionpoint_enable - enable/disable an
+//  exception point by index, returning true if we
+//  found it
+//-------------------------------------------------
+
+bool device_debug::exceptionpoint_enable(int index, bool enable)
+{
+	// scan the list to see if we own this exception point
+	for (auto &epp : m_eplist)
+	{
+		debug_exceptionpoint &ep = *epp.second;
+		if (ep.m_index == index)
+		{
+			ep.m_enabled = enable;
+			return true;
+		}
+	}
+
+	// we don't own it, return false
+	return false;
+}
+
+
+//-------------------------------------------------
+//  exceptionpoint_enable_all - enable/disable all
+//  exception points
+//-------------------------------------------------
+
+void device_debug::exceptionpoint_enable_all(bool enable)
+{
+	// apply the enable to all exception points we own
+	for (auto &epp : m_eplist)
+		exceptionpoint_enable(epp.second->index(), enable);
 }
 
 
@@ -1385,7 +1538,6 @@ void device_debug::set_track_pc(bool value)
 //  track_pc_visited - returns a boolean stating
 //  if this PC has been visited or not.  CRC32 is
 //  done in this function on currently active CPU.
-//  TODO: Take a CPU context as input
 //-------------------------------------------------
 
 bool device_debug::track_pc_visited(offs_t pc) const
@@ -1399,7 +1551,6 @@ bool device_debug::track_pc_visited(offs_t pc) const
 
 //-------------------------------------------------
 //  set_track_pc_visited - set this pc as visited.
-//  TODO: Take a CPU context as input
 //-------------------------------------------------
 
 void device_debug::set_track_pc_visited(offs_t pc)
@@ -1549,31 +1700,14 @@ u32 device_debug::compute_opcode_crc32(offs_t pc) const
 //  trace - trace execution of a given device
 //-------------------------------------------------
 
-void device_debug::trace(FILE *file, bool trace_over, bool detect_loops, bool logerror, const char *action)
+void device_debug::trace(std::unique_ptr<std::ostream> &&file, bool trace_over, bool detect_loops, bool logerror, std::string_view action)
 {
 	// delete any existing tracers
 	m_trace = nullptr;
 
 	// if we have a new file, make a new tracer
 	if (file != nullptr)
-		m_trace = std::make_unique<tracer>(*this, *file, trace_over, detect_loops, logerror, action);
-}
-
-
-//-------------------------------------------------
-//  trace_printf - output data into the given
-//  device's tracefile, if tracing
-//-------------------------------------------------
-
-void device_debug::trace_printf(const char *fmt, ...)
-{
-	if (m_trace != nullptr)
-	{
-		va_list va;
-		va_start(va, fmt);
-		m_trace->vprintf(fmt, va);
-		va_end(va);
-	}
+		m_trace = std::make_unique<tracer>(*this, std::move(file), trace_over, detect_loops, logerror, action);
 }
 
 
@@ -1601,7 +1735,7 @@ void device_debug::compute_debug_flags()
 
 	// if we're tracking history, or we're hooked, or stepping, or stopping at a breakpoint
 	// make sure we call the hook
-	if ((m_flags & (DEBUG_FLAG_HISTORY | DEBUG_FLAG_HOOKED | DEBUG_FLAG_STEPPING_ANY | DEBUG_FLAG_STOP_PC | DEBUG_FLAG_LIVE_BP)) != 0)
+	if ((m_flags & (DEBUG_FLAG_HISTORY | DEBUG_FLAG_STEPPING_ANY | DEBUG_FLAG_STOP_PC | DEBUG_FLAG_LIVE_BP)) != 0)
 		machine.debug_flags |= DEBUG_FLAG_CALL_HOOK;
 
 	// also call if we are tracing
@@ -1625,12 +1759,32 @@ void device_debug::prepare_for_step_overout(offs_t pc)
 
 	// disassemble the current instruction and get the flags
 	u32 dasmresult = buffer.disassemble_info(pc);
+	if ((dasmresult & util::disasm_interface::SUPPORTED) == 0)
+		return;
+
+	bool step_out = (m_flags & DEBUG_FLAG_STEPPING_OUT) != 0 && (dasmresult & util::disasm_interface::STEP_OUT) != 0;
+	bool test_cond = (dasmresult & util::disasm_interface::STEP_COND) != 0 && ((m_flags & (DEBUG_FLAG_STEPPING_BRANCH_TRUE | DEBUG_FLAG_STEPPING_BRANCH_FALSE)) != 0 || step_out);
+	if (test_cond && m_stop_condition && !m_stop_condition->is_empty())
+	{
+		try
+		{
+			test_cond = m_stop_condition->execute();
+		}
+		catch (expression_error &)
+		{
+			test_cond = false;
+		}
+	}
 
 	// if flags are supported and it's a call-style opcode, set a temp breakpoint after that instruction
-	if ((dasmresult & util::disasm_interface::SUPPORTED) != 0 && (dasmresult & util::disasm_interface::STEP_OVER) != 0)
+	// (TODO: this completely fails for subroutines that consume inline operands or use alternate returns)
+	if ((dasmresult & util::disasm_interface::STEP_OVER) != 0 || test_cond)
 	{
 		int extraskip = (dasmresult & util::disasm_interface::OVERINSTMASK) >> util::disasm_interface::OVERINSTSHIFT;
 		pc = buffer.next_pc_wrap(pc, dasmresult & util::disasm_interface::LENGTHMASK);
+		m_delay_steps = extraskip + 1;
+		if (m_stepsleft < m_delay_steps)
+			m_stepsleft = m_delay_steps;
 
 		// if we need to skip additional instructions, advance as requested
 		while (extraskip-- > 0) {
@@ -1638,13 +1792,17 @@ void device_debug::prepare_for_step_overout(offs_t pc)
 			pc = buffer.next_pc_wrap(pc, result & util::disasm_interface::LENGTHMASK);
 		}
 		m_stepaddr = pc;
+		if ((dasmresult & util::disasm_interface::STEP_OVER) != 0)
+			m_flags |= DEBUG_FLAG_CALL_IN_PROGRESS;
+		if (test_cond)
+			m_flags |= DEBUG_FLAG_TEST_IN_PROGRESS;
 	}
 
 	// if we're stepping out and this isn't a step out instruction, reset the steps until stop to a high number
-	// (TODO: this doesn't work with conditional return instructions)
-	if ((m_flags & DEBUG_FLAG_STEPPING_OUT) != 0)
+	if ((m_flags & (DEBUG_FLAG_STEPPING_OUT | DEBUG_FLAG_STEPPING_BRANCH_TRUE | DEBUG_FLAG_STEPPING_BRANCH_FALSE)) != 0)
 	{
-		if ((dasmresult & util::disasm_interface::SUPPORTED) != 0 && (dasmresult & util::disasm_interface::STEP_OUT) == 0)
+		// make sure to also reset the number of steps for conditionals that may be single-instruction loops
+		if (test_cond || !step_out)
 			m_stepsleft = 100;
 		else
 		{
@@ -1678,7 +1836,7 @@ void device_debug::breakpoint_update_flags()
 	if (!(m_flags & DEBUG_FLAG_LIVE_BP))
 	{
 		// see if there are any enabled registerpoints
-		for (debug_registerpoint &rp : *m_rplist)
+		for (debug_registerpoint &rp : m_rplist)
 		{
 			if (rp.m_enabled)
 			{
@@ -1728,7 +1886,7 @@ void device_debug::breakpoint_check(offs_t pc)
 	}
 
 	// see if we have any matching registerpoints
-	for (debug_registerpoint &rp : *m_rplist)
+	for (debug_registerpoint &rp : m_rplist)
 	{
 		if (rp.hit())
 		{
@@ -1761,10 +1919,10 @@ void device_debug::breakpoint_check(offs_t pc)
 //  tracer - constructor
 //-------------------------------------------------
 
-device_debug::tracer::tracer(device_debug &debug, FILE &file, bool trace_over, bool detect_loops, bool logerror, const char *action)
+device_debug::tracer::tracer(device_debug &debug, std::unique_ptr<std::ostream> &&file, bool trace_over, bool detect_loops, bool logerror, std::string_view action)
 	: m_debug(debug)
-	, m_file(file)
-	, m_action((action != nullptr) ? action : "")
+	, m_file(std::move(file))
+	, m_action(action)
 	, m_detect_loops(detect_loops)
 	, m_logerror(logerror)
 	, m_loops(0)
@@ -1783,7 +1941,7 @@ device_debug::tracer::tracer(device_debug &debug, FILE &file, bool trace_over, b
 device_debug::tracer::~tracer()
 {
 	// make sure we close the file if we can
-	fclose(&m_file);
+	m_file.reset();
 }
 
 
@@ -1819,7 +1977,7 @@ void device_debug::tracer::update(offs_t pc)
 
 		// if we just finished looping, indicate as much
 		if (m_loops != 0)
-			fprintf(&m_file, "\n   (loops for %d instructions)\n\n", m_loops);
+			util::stream_format(*m_file, "\n   (loops for %d instructions)\n\n", m_loops);
 		m_loops = 0;
 	}
 
@@ -1834,7 +1992,7 @@ void device_debug::tracer::update(offs_t pc)
 	buffer.disassemble(pc, instruction, next_pc, size, dasmresult);
 
 	// output the result
-	fprintf(&m_file, "%s: %s\n", buffer.pc_to_string(pc).c_str(), instruction.c_str());
+	util::stream_format(*m_file, "%s: %s\n", buffer.pc_to_string(pc), instruction);
 
 	// do we need to step the trace over this instruction?
 	if (m_trace_over && (dasmresult & util::disasm_interface::SUPPORTED) != 0 && (dasmresult & util::disasm_interface::STEP_OVER) != 0)
@@ -1852,7 +2010,7 @@ void device_debug::tracer::update(offs_t pc)
 	// log this PC
 	m_nextdex = (m_nextdex + 1) % TRACE_LOOPS;
 	m_history[m_nextdex] = pc;
-	fflush(&m_file);
+	m_file->flush();
 }
 
 
@@ -1860,11 +2018,11 @@ void device_debug::tracer::update(offs_t pc)
 //  vprintf - generic print to the trace file
 //-------------------------------------------------
 
-void device_debug::tracer::vprintf(const char *format, va_list va)
+void device_debug::tracer::vprintf(util::format_argument_pack<std::ostream> const &args)
 {
 	// pass through to the file
-	vfprintf(&m_file, format, va);
-	fflush(&m_file);
+	util::stream_format(*m_file, args);
+	m_file->flush();
 }
 
 
@@ -1875,7 +2033,7 @@ void device_debug::tracer::vprintf(const char *format, va_list va)
 
 void device_debug::tracer::flush()
 {
-	fflush(&m_file);
+	m_file->flush();
 }
 
 

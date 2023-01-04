@@ -86,13 +86,12 @@ private:
 	virtual void handle(event const *ev) override;
 
 	// methods
-	int compare_entries(const file_selector_entry *e1, const file_selector_entry *e2);
 	file_selector_entry &append_entry(file_selector_entry_type entry_type, const std::string &entry_basename, const std::string &entry_fullpath);
 	file_selector_entry &append_entry(file_selector_entry_type entry_type, std::string &&entry_basename, std::string &&entry_fullpath);
 	file_selector_entry *append_dirent_entry(const osd::directory::entry *dirent);
 	void append_entry_menu_item(const file_selector_entry *entry);
 	void select_item(const file_selector_entry &entry);
-	void type_search_char(char32_t ch);
+	void update_search();
 };
 
 

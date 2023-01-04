@@ -33,14 +33,20 @@
 #include "emuopts.h"
 #include "mameopts.h"
 #include "drivenum.h"
+#include "fileio.h"
 #include "natkeyboard.h"
 #include "render.h"
 #include "cheat.h"
 #include "rendfont.h"
 #include "romload.h"
+#include "screen.h"
 #include "uiinput.h"
 
+// FIXME: allow OSD module headers to be included in a less ugly way
+#include "../osd/modules/lib/osdlib.h"
 #include "../osd/modules/lib/osdobj_common.h"
+
+#include "utf8.h"
 
 #include <chrono>
 #include <functional>
@@ -181,6 +187,7 @@ mame_ui_manager::mame_ui_manager(running_machine &machine)
 	, m_target_font_height(0)
 	, m_has_warnings(false)
 	, m_unthrottle_mute(false)
+	, m_image_display_enabled(true)
 	, m_machine_info()
 	, m_unemulated_features()
 	, m_imperfect_features()
@@ -200,8 +207,6 @@ void mame_ui_manager::init()
 	ui::system_list::instance().cache_data(options());
 
 	// initialize the other UI bits
-	ui_gfx_init(machine());
-
 	m_ui_colors.refresh(options());
 
 	// update font row info from setting
@@ -551,7 +556,7 @@ void mame_ui_manager::display_startup_screens(bool first_time)
 			if (!mandatory_images.empty() && show_mandatory_fileman)
 			{
 				std::ostringstream warning;
-				warning << _("This driver requires images to be loaded in the following device(s): ");
+				warning << _("This system requires media images to be mounted for the following device(s): ");
 
 				output_joined_collection(mandatory_images,
 						[&warning](const std::reference_wrapper<const std::string> &img)    { warning << "\"" << img.get() << "\""; },
@@ -715,40 +720,37 @@ render_font *mame_ui_manager::get_font()
 //  of a line
 //-------------------------------------------------
 
-float mame_ui_manager::get_line_height()
+float mame_ui_manager::get_line_height(float scale)
 {
-	int32_t raw_font_pixel_height = get_font()->pixel_height();
-	render_target &ui_target = machine().render().ui_target();
-	int32_t target_pixel_height = ui_target.height();
-	float one_to_one_line_height;
-	float scale_factor;
+	int32_t const raw_font_pixel_height = get_font()->pixel_height();
+	float target_pixel_height = machine().render().ui_target().height();
 
 	// compute the font pixel height at the nominal size
-	one_to_one_line_height = (float)raw_font_pixel_height / (float)target_pixel_height;
+	float const one_to_one_line_height = float(raw_font_pixel_height) / target_pixel_height;
 
 	// determine the scale factor
-	scale_factor = target_font_height() / one_to_one_line_height;
+	float scale_factor = target_font_height() * scale / one_to_one_line_height;
 
 	// if our font is small-ish, do integral scaling
 	if (raw_font_pixel_height < 24)
 	{
 		// do we want to scale smaller? only do so if we exceed the threshold
-		if (scale_factor <= 1.0f)
+		if (scale_factor <= 1.0F)
 		{
 			if (one_to_one_line_height < UI_MAX_FONT_HEIGHT || raw_font_pixel_height < 12)
-				scale_factor = 1.0f;
+				scale_factor = 1.0F;
 		}
-
-		// otherwise, just ensure an integral scale factor
 		else
+		{
+			// otherwise, just ensure an integral scale factor
 			scale_factor = floor(scale_factor);
+		}
 	}
-
-	// otherwise, just make sure we hit an even number of pixels
 	else
 	{
-		int32_t height = scale_factor * one_to_one_line_height * (float)target_pixel_height;
-		scale_factor = (float)height / (one_to_one_line_height * (float)target_pixel_height);
+		// otherwise, just make sure we hit an even number of pixels
+		int32_t height = scale_factor * one_to_one_line_height * target_pixel_height;
+		scale_factor = float(height) / (one_to_one_line_height * target_pixel_height);
 	}
 
 	return scale_factor * one_to_one_line_height;
@@ -771,9 +773,14 @@ float mame_ui_manager::get_char_width(char32_t ch)
 //  character string
 //-------------------------------------------------
 
+float mame_ui_manager::get_string_width(std::string_view s)
+{
+	return get_string_width(s, get_line_height());
+}
+
 float mame_ui_manager::get_string_width(std::string_view s, float text_size)
 {
-	return get_font()->utf8string_width(get_line_height() * text_size, machine().render().ui_aspect(), s);
+	return get_font()->utf8string_width(text_size, machine().render().ui_aspect(), s);
 }
 
 
@@ -832,18 +839,37 @@ void mame_ui_manager::draw_text_full(
 		float x, float y, float origwrapwidth,
 		ui::text_layout::text_justify justify, ui::text_layout::word_wrapping wrap,
 		draw_mode draw, rgb_t fgcolor, rgb_t bgcolor,
+		float *totalwidth, float *totalheight)
+{
+	draw_text_full(
+			container,
+			origs,
+			x, y, origwrapwidth,
+			justify, wrap,
+			draw, fgcolor, bgcolor,
+			totalwidth, totalheight,
+			get_line_height());
+}
+
+void mame_ui_manager::draw_text_full(
+		render_container &container,
+		std::string_view origs,
+		float x, float y, float origwrapwidth,
+		ui::text_layout::text_justify justify, ui::text_layout::word_wrapping wrap,
+		draw_mode draw, rgb_t fgcolor, rgb_t bgcolor,
 		float *totalwidth, float *totalheight,
 		float text_size)
 {
 	// create the layout
-	auto layout = create_layout(container, origwrapwidth, justify, wrap);
+	ui::text_layout layout(
+			*get_font(), machine().render().ui_aspect(&container) * text_size, text_size,
+			origwrapwidth, justify, wrap);
 
 	// append text to it
 	layout.add_text(
 			origs,
 			fgcolor,
-			(draw == OPAQUE_) ? bgcolor : rgb_t::transparent(),
-			text_size);
+			(draw == OPAQUE_) ? bgcolor : rgb_t::transparent());
 
 	// and emit it (if we are asked to do so)
 	if (draw != NONE)
@@ -1115,6 +1141,7 @@ void mame_ui_manager::decrease_frameskip()
 bool mame_ui_manager::can_paste()
 {
 	// check to see if the clipboard is not empty
+	// FIXME: this is expensive - need a cheaper way to check if clipboard contains suitable content
 	return !osd_get_clipboard_text().empty();
 }
 
@@ -1180,7 +1207,7 @@ void mame_ui_manager::start_load_state()
 void mame_ui_manager::image_handler_ingame()
 {
 	// run display routine for devices
-	if (machine().phase() == machine_phase::RUNNING)
+	if (m_image_display_enabled && machine().phase() == machine_phase::RUNNING)
 	{
 		auto layout = create_layout(machine().render().ui_container());
 
@@ -2033,8 +2060,8 @@ int32_t mame_ui_manager::slider_crossoffset(ioport_field &field, std::string *st
 ui::text_layout mame_ui_manager::create_layout(render_container &container, float width, ui::text_layout::text_justify justify, ui::text_layout::word_wrapping wrap)
 {
 	// determine scale factors
-	float yscale = get_line_height();
-	float xscale = yscale * machine().render().ui_aspect(&container);
+	float const yscale = get_line_height();
+	float const xscale = yscale * machine().render().ui_aspect(&container);
 
 	// create the layout
 	return ui::text_layout(*get_font(), xscale, yscale, width, justify, wrap);
@@ -2170,7 +2197,7 @@ void mame_ui_manager::save_main_option()
 			return;
 		}
 	}
-	popup_time(3, "%s", _("\n    Configuration saved    \n\n"));
+	popup_time(3, "%s", _("\n    Settings saved    \n\n"));
 }
 
 void mame_ui_manager::menu_reset()

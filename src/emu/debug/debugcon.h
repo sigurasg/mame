@@ -23,8 +23,7 @@
     CONSTANTS
 ***************************************************************************/
 
-#define MAX_COMMAND_LENGTH                  4096
-#define MAX_COMMAND_PARAMS                  128
+constexpr int MAX_COMMAND_PARAMS            = 128;
 
 // flags for command parsing
 constexpr u32 CMDFLAG_NONE                  = 0x0000;
@@ -79,11 +78,12 @@ class debugger_console
 {
 public:
 	debugger_console(running_machine &machine);
+	~debugger_console();
 
 	// command handling
-	CMDERR          execute_command(const std::string &command, bool echo);
-	CMDERR          validate_command(const char *command);
-	void            register_command(const char *command, u32 flags, int minparams, int maxparams, std::function<void (const std::vector<std::string> &)> &&handler);
+	CMDERR          execute_command(std::string_view command, bool echo);
+	CMDERR          validate_command(std::string_view command);
+	void            register_command(std::string_view command, u32 flags, int minparams, int maxparams, std::function<void (const std::vector<std::string_view> &)> &&handler);
 	void            source_script(const char *file);
 	void            process_source_file();
 
@@ -110,28 +110,58 @@ public:
 		vprintf_wrap(wrapcol, util::make_format_argument_pack(std::forward<Format>(fmt), std::forward<Params>(args)...));
 	}
 
-	device_t *get_visible_cpu() { return m_visiblecpu; }
+	device_t *get_visible_cpu() const { return m_visiblecpu; }
 	void set_visible_cpu(device_t *visiblecpu) { m_visiblecpu = visiblecpu; }
-	symbol_table &visible_symtable();
+	symbol_table &visible_symtable() const;
 
 	static std::string cmderr_to_string(CMDERR error);
+
+	// validates a parameter as a boolean value
+	bool validate_boolean_parameter(std::string_view param, bool &result);
+
+	// validates a parameter as a numeric value
+	bool validate_number_parameter(std::string_view param, u64 &result);
+
+	// validates a parameter as a device
+	bool validate_device_parameter(std::string_view param, device_t *&result);
+
+	// validates a parameter as a CPU
+	bool validate_cpu_parameter(std::string_view param, device_t *&result);
+
+	// validates a parameter as an address space identifier
+	bool validate_device_space_parameter(std::string_view param, int spacenum, address_space *&result);
+
+	// validates a parameter as a target address and retrieves the given address space and address
+	bool validate_target_address_parameter(std::string_view param, int spacenum, address_space *&space, u64 &addr);
+
+	// validates a parameter as a memory region name and retrieves the given region
+	bool validate_memory_region_parameter(std::string_view param, memory_region *&result);
+
+	// validates a parameter as a debugger expression
+	bool validate_expression_parameter(std::string_view param, parsed_expression &result);
+
+	// validates a parameter as a debugger command
+	bool validate_command_parameter(std::string_view param);
 
 private:
 	void exit();
 
-	void execute_help_custom(const std::vector<std::string> &params);
-	void execute_condump(const std::vector<std::string>& params);
+	void execute_help_custom(const std::vector<std::string_view> &params);
+	void execute_condump(const std::vector<std::string_view>& params);
 
-	void trim_parameter(char **paramptr, bool keep_quotes);
-	CMDERR internal_execute_command(bool execute, int params, char **param);
-	CMDERR internal_parse_command(const std::string &original_command, bool execute);
+	[[nodiscard]] static std::string_view trim_parameter(std::string_view param, bool keep_quotes);
+	CMDERR internal_execute_command(bool execute, std::vector<std::string_view> &params);
+	CMDERR internal_parse_command(std::string_view command, bool execute);
 
 	void print_core(std::string_view text);                   // core text output
 	void print_core_wrap(std::string_view text, int wrapcol); // core text output
 
+	device_t &get_device_search_base(std::string_view &param) const;
+	device_t *get_cpu_by_index(u64 cpunum) const;
+
 	struct debug_command
 	{
-		debug_command(const char *_command, u32 _flags, int _minparams, int _maxparams, std::function<void (const std::vector<std::string> &)> &&_handler);
+		debug_command(std::string_view _command, u32 _flags, int _minparams, int _maxparams, std::function<void (const std::vector<std::string_view> &)> &&_handler);
 
 		struct compare
 		{
@@ -144,7 +174,7 @@ private:
 		std::string     command;
 		const char *    params;
 		const char *    help;
-		std::function<void (const std::vector<std::string> &)> handler;
+		std::function<void (const std::vector<std::string_view> &)> handler;
 		u32             flags;
 		int             minparams;
 		int             maxparams;

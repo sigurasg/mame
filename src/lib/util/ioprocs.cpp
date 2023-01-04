@@ -2,15 +2,14 @@
 // copyright-holders:Vas Crabb
 /***************************************************************************
 
-    ioprocs.h
+    ioprocs.cpp
 
-    I/O interfaces
+    I/O interface implementations for RAM, C standard I/O and OSD files
 
 ***************************************************************************/
 
 #include "ioprocs.h"
 
-#include "corefile.h"
 #include "ioprocsfill.h"
 
 #include "osdfile.h"

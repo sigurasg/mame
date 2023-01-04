@@ -45,6 +45,7 @@ namespace ui {
 
 menu_slot_devices::menu_slot_devices(mame_ui_manager &mui, render_container &container) : menu(mui, container)
 {
+	set_heading(_("Slot Devices"));
 }
 
 //-------------------------------------------------
@@ -200,10 +201,10 @@ void menu_slot_devices::populate(float &customtop, float &custombottom)
 		item_append(slot.slot_name(), opt_name, item_flags, (void *)&slot);
 	}
 	item_append(menu_item_type::SEPARATOR);
-	item_append(_("Reset Machine"), 0, ITEMREF_RESET);
+	item_append(_("Reset System"), 0, ITEMREF_RESET);
 
 	// leave space for the name of the current option at the bottom
-	custombottom = ui().get_line_height() + 3.0f * ui().box_tb_border();
+	custombottom = line_height() + 3.0f * tb_border();
 }
 
 
@@ -220,9 +221,9 @@ void menu_slot_devices::custom_render(void *selectedref, float top, float bottom
 		char const *const text[] = { option ? option->devtype().fullname() : _("[empty slot]") };
 		draw_text_box(
 				std::begin(text), std::end(text),
-				origx1, origx2, origy2 + ui().box_tb_border(), origy2 + bottom,
+				origx1, origx2, origy2 + tb_border(), origy2 + bottom,
 				text_layout::text_justify::CENTER, text_layout::word_wrapping::TRUNCATE, false,
-				ui().colors().text_color(), ui().colors().background_color(), 1.0f);
+				ui().colors().text_color(), ui().colors().background_color());
 	}
 }
 

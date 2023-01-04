@@ -427,6 +427,7 @@ inline void upd7220_device::reset_figs_param()
 	m_figs.m_dm = 0xffff;
 	m_figs.m_gd = 0;
 	m_figs.m_figure_type = 0;
+	m_pattern = 0xffff;
 }
 
 
@@ -673,9 +674,9 @@ void upd7220_device::device_start()
 	m_write_blank.resolve_safe();
 
 	// allocate timers
-	m_vsync_timer = timer_alloc(TIMER_VSYNC);
-	m_hsync_timer = timer_alloc(TIMER_HSYNC);
-	m_blank_timer = timer_alloc(TIMER_BLANK);
+	m_vsync_timer = timer_alloc(FUNC(upd7220_device::vsync_update), this);
+	m_hsync_timer = timer_alloc(FUNC(upd7220_device::hsync_update), this);
+	m_blank_timer = timer_alloc(FUNC(upd7220_device::blank_update), this);
 
 	// register for state saving
 	save_item(NAME(m_ra));
@@ -735,58 +736,55 @@ void upd7220_device::device_reset()
 
 
 //-------------------------------------------------
-//  device_timer - handler timer events
+//  timer events
 //-------------------------------------------------
 
-void upd7220_device::device_timer(emu_timer &timer, device_timer_id id, int param, void *ptr)
+TIMER_CALLBACK_MEMBER(upd7220_device::hsync_update)
 {
-	switch (id)
+	if (param)
 	{
-	case TIMER_HSYNC:
-		if (param)
-		{
-			m_sr |= UPD7220_SR_HBLANK_ACTIVE;
-		}
-		else
-		{
-			m_sr &= ~UPD7220_SR_HBLANK_ACTIVE;
-		}
-
-		m_write_hsync(param);
-
-		update_hsync_timer(param);
-		break;
-
-	case TIMER_VSYNC:
-		if (param)
-		{
-			m_sr |= UPD7220_SR_VSYNC_ACTIVE;
-		}
-		else
-		{
-			m_sr &= ~UPD7220_SR_VSYNC_ACTIVE;
-		}
-
-		m_write_vsync(param);
-
-		update_vsync_timer(param);
-		break;
-
-	case TIMER_BLANK:
-		if (param)
-		{
-			m_sr |= UPD7220_SR_HBLANK_ACTIVE;
-		}
-		else
-		{
-			m_sr &= ~UPD7220_SR_HBLANK_ACTIVE;
-		}
-
-		m_write_blank(param);
-
-		update_blank_timer(param);
-		break;
+		m_sr |= UPD7220_SR_HBLANK_ACTIVE;
 	}
+	else
+	{
+		m_sr &= ~UPD7220_SR_HBLANK_ACTIVE;
+	}
+
+	m_write_hsync(param);
+
+	update_hsync_timer(param);
+}
+
+TIMER_CALLBACK_MEMBER(upd7220_device::vsync_update)
+{
+	if (param)
+	{
+		m_sr |= UPD7220_SR_VSYNC_ACTIVE;
+	}
+	else
+	{
+		m_sr &= ~UPD7220_SR_VSYNC_ACTIVE;
+	}
+
+	m_write_vsync(param);
+
+	update_vsync_timer(param);
+}
+
+TIMER_CALLBACK_MEMBER(upd7220_device::blank_update)
+{
+	if (param)
+	{
+		m_sr |= UPD7220_SR_HBLANK_ACTIVE;
+	}
+	else
+	{
+		m_sr &= ~UPD7220_SR_HBLANK_ACTIVE;
+	}
+
+	m_write_blank(param);
+
+	update_blank_timer(param);
 }
 
 
@@ -813,9 +811,9 @@ void upd7220_device::draw_pixel()
 
 void upd7220_device::draw_line()
 {
-	int d = (m_figs.m_d & 0x2000) ? (int16_t)(m_figs.m_d | 0xe000) : m_figs.m_d;
-	int d1 = (m_figs.m_d1 & 0x2000) ? (int16_t)(m_figs.m_d1 | 0xe000) : m_figs.m_d1;
-	int d2 = (m_figs.m_d2 & 0x2000) ? (int16_t)(m_figs.m_d2 | 0xe000) : m_figs.m_d2;
+	int d = util::sext(m_figs.m_d, 14);
+	int d1 = util::sext(m_figs.m_d1, 14);
+	int d2 = util::sext(m_figs.m_d2, 14);
 	const uint8_t octant = m_figs.m_dir;
 
 	LOG("uPD7220 line check: %08x %04x %02x %02x %d %d %d %d\n", m_ead, m_mask, m_bitmap_mod, m_figs.m_dir, m_figs.m_dc, d, d1, d2);

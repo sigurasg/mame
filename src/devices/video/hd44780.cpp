@@ -2,12 +2,12 @@
 // copyright-holders:Sandro Ronco
 /***************************************************************************
 
-        Hitachi HD44780 LCD controller
+    Hitachi HD44780 LCD controller
 
-        TODO:
-        - dump internal CGROM
-        - emulate osc pin, determine video timings and busy flag duration from it,
-          and if possible, remove m_busy_factor
+    TODO:
+    - dump internal CGROM
+    - emulate osc pin, determine video timings and busy flag duration from it,
+      and if possible, remove m_busy_factor
 
 ***************************************************************************/
 
@@ -113,8 +113,8 @@ void hd44780_device::device_start()
 
 	m_pixel_update_cb.resolve();
 
-	m_busy_timer = timer_alloc(TIMER_BUSY);
-	m_blink_timer = timer_alloc(TIMER_BLINKING);
+	m_busy_timer = timer_alloc(FUNC(hd44780_device::clear_busy_flag), this);
+	m_blink_timer = timer_alloc(FUNC(hd44780_device::blink_tick), this);
 	m_blink_timer->adjust(attotime::from_msec(409), 0, attotime::from_msec(409));
 
 	// state saving
@@ -178,21 +178,17 @@ void hd44780_device::device_reset()
 
 
 //-------------------------------------------------
-//  device_timer - handler timer events
+//  timer events
 //-------------------------------------------------
 
-void hd44780_device::device_timer(emu_timer &timer, device_timer_id id, int param, void *ptr)
+TIMER_CALLBACK_MEMBER(hd44780_device::clear_busy_flag)
 {
-	switch (id)
-	{
-		case TIMER_BUSY:
-			m_busy_flag = false;
-			break;
+	m_busy_flag = false;
+}
 
-		case TIMER_BLINKING:
-			m_blink = !m_blink;
-			break;
-	}
+TIMER_CALLBACK_MEMBER(hd44780_device::blink_tick)
+{
+	m_blink = !m_blink;
 }
 
 

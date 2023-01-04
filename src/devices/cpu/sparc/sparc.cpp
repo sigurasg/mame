@@ -24,29 +24,27 @@
 #include "sparc.h"
 #include "sparcdefs.h"
 
-#include "debugger.h"
-
 #include "softfloat3/source/include/softfloat.h"
 
-#define LOG_BIU_CTRL			(1U << 1)
-#define LOG_LOCK_CTRL			(1U << 2)
-#define LOG_LOCK_CTRL_SAVE		(1U << 3)
-#define LOG_CACHE_STATUS		(1U << 4)
-#define LOG_RESTORE_LOCK_CTRL	(1U << 5)
-#define LOG_SYSTEM_CTRL			(1U << 6)
-#define LOG_SAME_PAGE_MASK		(1U << 7)
-#define LOG_ADDR_RANGE			(1U << 8)
-#define LOG_ADDR_MASK			(1U << 9)
-#define LOG_WAIT_STATE			(1U << 10)
-#define LOG_TIMER				(1U << 11)
-#define LOG_TIMER_PRELOAD		(1U << 12)
+#define LOG_BIU_CTRL            (1U << 1)
+#define LOG_LOCK_CTRL           (1U << 2)
+#define LOG_LOCK_CTRL_SAVE      (1U << 3)
+#define LOG_CACHE_STATUS        (1U << 4)
+#define LOG_RESTORE_LOCK_CTRL   (1U << 5)
+#define LOG_SYSTEM_CTRL         (1U << 6)
+#define LOG_SAME_PAGE_MASK      (1U << 7)
+#define LOG_ADDR_RANGE          (1U << 8)
+#define LOG_ADDR_MASK           (1U << 9)
+#define LOG_WAIT_STATE          (1U << 10)
+#define LOG_TIMER               (1U << 11)
+#define LOG_TIMER_PRELOAD       (1U << 12)
 #define LOG_UNMAPPED            (1U << 13)
-#define LOG_ICACHE_LOCK			(1U << 14)
-#define LOG_ICACHE_TAG			(1U << 15)
-#define LOG_ICACHE_DATA			(1U << 16)
-#define LOG_DCACHE_LOCK			(1U << 17)
-#define LOG_DCACHE_TAG			(1U << 18)
-#define LOG_DCACHE_DATA			(1U << 19)
+#define LOG_ICACHE_LOCK         (1U << 14)
+#define LOG_ICACHE_TAG          (1U << 15)
+#define LOG_ICACHE_DATA         (1U << 16)
+#define LOG_DCACHE_LOCK         (1U << 17)
+#define LOG_DCACHE_TAG          (1U << 18)
+#define LOG_DCACHE_DATA         (1U << 19)
 
 #define VERBOSE (0)
 #include "logmacro.h"
@@ -1180,21 +1178,24 @@ void sparc_base_device::state_string_export(const device_state_entry &entry, std
 std::unique_ptr<util::disasm_interface> sparc_base_device::create_disassembler()
 {
 	auto dasm = std::make_unique<sparc_disassembler>(static_cast<sparc_disassembler::config const *>(this), sparc_disassembler::v7);
-	m_asi_desc_adder(dasm.get());
+	if (m_asi_desc_adder)
+		m_asi_desc_adder(dasm.get());
 	return std::move(dasm);
 }
 
 std::unique_ptr<util::disasm_interface> sparcv8_device::create_disassembler()
 {
 	auto dasm = std::make_unique<sparc_disassembler>(static_cast<sparc_disassembler::config const *>(this), sparc_disassembler::v8);
-	m_asi_desc_adder(dasm.get());
+	if (m_asi_desc_adder)
+		m_asi_desc_adder(dasm.get());
 	return std::move(dasm);
 }
 
 std::unique_ptr<util::disasm_interface> mb86930_device::create_disassembler()
 {
 	auto dasm = std::make_unique<sparc_disassembler>(static_cast<sparc_disassembler::config const *>(this), sparc_disassembler::sparclite);
-	m_asi_desc_adder(dasm.get());
+	if (m_asi_desc_adder)
+		m_asi_desc_adder(dasm.get());
 	return std::move(dasm);
 }
 

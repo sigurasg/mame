@@ -17,6 +17,8 @@
 #ifndef MAME_EMU_EMUMEM_H
 #define MAME_EMU_EMUMEM_H
 
+#include "notifier.h"
+
 #include <optional>
 #include <set>
 #include <type_traits>
@@ -49,6 +51,14 @@ enum class read_or_write
 	READWRITE = 3
 };
 
+
+//**************************************************************************
+//  FORWARD DECLARATIONS
+//**************************************************************************
+
+class handler_entry;
+template<int Width, int AddrShift> class handler_entry_read_passthrough;
+template<int Width, int AddrShift> class handler_entry_write_passthrough;
 
 
 //**************************************************************************
@@ -90,7 +100,7 @@ struct memory_entry_context {
 
 struct memory_entry {
 	offs_t start, end;
-	class handler_entry *entry;
+	handler_entry *entry;
 	std::vector<memory_entry_context> context;
 };
 
@@ -465,6 +475,29 @@ constexpr int handler_entry_dispatch_lowbits(int highbits, int width, int ashift
 		width + ashift;
 }
 
+
+// =====================-> Passthrough handler management structure
+
+class memory_passthrough_handler_impl
+{
+public:
+	memory_passthrough_handler_impl(address_space &space) : m_space(space) {}
+	memory_passthrough_handler_impl(memory_passthrough_handler_impl const &) = delete;
+
+	void remove();
+
+private:
+	address_space &m_space;
+	std::unordered_set<handler_entry *> m_handlers;
+
+	void add_handler(handler_entry *handler) { m_handlers.insert(handler); }
+	void remove_handler(handler_entry *handler) { m_handlers.erase(m_handlers.find(handler)); }
+
+	friend address_space;
+	template<int Width, int AddrShift> friend class ::handler_entry_read_passthrough;
+	template<int Width, int AddrShift> friend class ::handler_entry_write_passthrough;
+};
+
 } // namespace emu::detail
 
 
@@ -561,8 +594,6 @@ protected:
 
 // Provides the populate/read/get_ptr/lookup API
 
-template<int Width, int AddrShift> class handler_entry_read_passthrough;
-
 template<int Width, int AddrShift> class handler_entry_read : public handler_entry
 {
 public:
@@ -581,6 +612,7 @@ public:
 
 	virtual uX read(offs_t offset, uX mem_mask) const = 0;
 	virtual std::pair<uX, u16> read_flags(offs_t offset, uX mem_mask) const = 0;
+	virtual u16 lookup_flags(offs_t offset, uX mem_mask) const = 0;
 	virtual void *get_ptr(offs_t offset) const;
 	virtual void lookup(offs_t address, offs_t &start, offs_t &end, handler_entry_read<Width, AddrShift> *&handler) const;
 
@@ -596,7 +628,7 @@ public:
 	virtual void populate_nomirror(offs_t start, offs_t end, offs_t ostart, offs_t oend, handler_entry_read<Width, AddrShift> *handler);
 	virtual void populate_mirror(offs_t start, offs_t end, offs_t ostart, offs_t oend, offs_t mirror, handler_entry_read<Width, AddrShift> *handler);
 
-	inline void populate_mismatched(offs_t start, offs_t end, offs_t mirror, const memory_units_descriptor<Width, AddrShift> &descriptor) {
+	void populate_mismatched(offs_t start, offs_t end, offs_t mirror, const memory_units_descriptor<Width, AddrShift> &descriptor) {
 		start &= ~NATIVE_MASK;
 		end |= NATIVE_MASK;
 		std::vector<mapping> mappings;
@@ -609,7 +641,7 @@ public:
 	virtual void populate_mismatched_nomirror(offs_t start, offs_t end, offs_t ostart, offs_t oend, const memory_units_descriptor<Width, AddrShift> &descriptor, u8 rkey, std::vector<mapping> &mappings);
 	virtual void populate_mismatched_mirror(offs_t start, offs_t end, offs_t ostart, offs_t oend, offs_t mirror, const memory_units_descriptor<Width, AddrShift> &descriptor, std::vector<mapping> &mappings);
 
-	inline void populate_passthrough(offs_t start, offs_t end, offs_t mirror, handler_entry_read_passthrough<Width, AddrShift> *handler) {
+	void populate_passthrough(offs_t start, offs_t end, offs_t mirror, handler_entry_read_passthrough<Width, AddrShift> *handler) {
 		start &= ~NATIVE_MASK;
 		end |= NATIVE_MASK;
 		std::vector<mapping> mappings;
@@ -636,8 +668,6 @@ public:
 
 // Provides the populate/write/get_ptr/lookup API
 
-template<int Width, int AddrShift> class handler_entry_write_passthrough;
-
 template<int Width, int AddrShift> class handler_entry_write : public handler_entry
 {
 public:
@@ -656,6 +686,7 @@ public:
 
 	virtual void write(offs_t offset, uX data, uX mem_mask) const = 0;
 	virtual u16 write_flags(offs_t offset, uX data, uX mem_mask) const = 0;
+	virtual u16 lookup_flags(offs_t offset, uX mem_mask) const = 0;
 	virtual void *get_ptr(offs_t offset) const;
 	virtual void lookup(offs_t address, offs_t &start, offs_t &end, handler_entry_write<Width, AddrShift> *&handler) const;
 
@@ -711,20 +742,21 @@ public:
 // =====================-> Passthrough handler management structure
 class memory_passthrough_handler
 {
-	template<int Width, int AddrShift> friend class handler_entry_read_passthrough;
-	template<int Width, int AddrShift> friend class handler_entry_write_passthrough;
-
 public:
-	memory_passthrough_handler(address_space &space) : m_space(space) {}
+	memory_passthrough_handler() : m_impl() {}
+	memory_passthrough_handler(std::shared_ptr<emu::detail::memory_passthrough_handler_impl> const &impl) : m_impl(impl) {}
 
-	inline void remove();
+	void remove()
+	{
+		auto impl(m_impl.lock());
+		if (impl)
+			impl->remove();
+	}
 
 private:
-	address_space &m_space;
-	std::unordered_set<handler_entry *> m_handlers;
+	std::weak_ptr<emu::detail::memory_passthrough_handler_impl> m_impl;
 
-	void add_handler(handler_entry *handler) { m_handlers.insert(handler); }
-	void remove_handler(handler_entry *handler) { m_handlers.erase(m_handlers.find(handler)); }
+	friend class address_space;
 };
 
 // =====================-> Forward declaration for address_space
@@ -995,6 +1027,7 @@ template<int Width, int AddrShift, endianness_t Endian, int TargetWidth, bool Al
 		}
 	}
 }
+
 // generic direct read with flags
 template<int Width, int AddrShift, endianness_t Endian, int TargetWidth, bool Aligned, typename TF> std::pair<typename emu::detail::handler_entry_size<TargetWidth>::uX, u16>  memory_read_generic_flags(TF ropf, offs_t address, typename emu::detail::handler_entry_size<TargetWidth>::uX mask)
 {
@@ -1264,6 +1297,271 @@ template<int Width, int AddrShift, endianness_t Endian, int TargetWidth, bool Al
 	}
 }
 
+//##############################################
+// generic direct read flags lookup
+template<int Width, int AddrShift, endianness_t Endian, int TargetWidth, bool Aligned, typename TF> u16 lookup_memory_read_generic_flags(TF lropf, offs_t address, typename emu::detail::handler_entry_size<TargetWidth>::uX mask)
+{
+	using NativeType = typename emu::detail::handler_entry_size<Width>::uX;
+
+	constexpr u32 TARGET_BYTES = 1 << TargetWidth;
+	constexpr u32 TARGET_BITS = 8 * TARGET_BYTES;
+	constexpr u32 NATIVE_BYTES = 1 << Width;
+	constexpr u32 NATIVE_BITS = 8 * NATIVE_BYTES;
+	constexpr u32 NATIVE_STEP = AddrShift >= 0 ? NATIVE_BYTES << iabs(AddrShift) : NATIVE_BYTES >> iabs(AddrShift);
+	constexpr u32 NATIVE_MASK = Width + AddrShift >= 0 ? make_bitmask<u32>(Width + AddrShift) : 0;
+
+	// equal to native size and aligned; simple pass-through to the native flags lookup
+	if (NATIVE_BYTES == TARGET_BYTES && (Aligned || (address & NATIVE_MASK) == 0))
+		return lropf(address & ~NATIVE_MASK, mask);
+
+	// if native size is larger, see if we can do a single masked flags lookup (guaranteed if we're aligned)
+	if (NATIVE_BYTES > TARGET_BYTES)
+	{
+		u32 offsbits = 8 * (memory_offset_to_byte(address, AddrShift) & (NATIVE_BYTES - (Aligned ? TARGET_BYTES : 1)));
+		if (Aligned || (offsbits + TARGET_BITS <= NATIVE_BITS))
+		{
+			if (Endian != ENDIANNESS_LITTLE) offsbits = NATIVE_BITS - TARGET_BITS - offsbits;
+			return lropf(address & ~NATIVE_MASK, (NativeType)mask << offsbits);
+		}
+	}
+
+	// determine our alignment against the native boundaries, and mask the address
+	u32 offsbits = 8 * (memory_offset_to_byte(address, AddrShift) & (NATIVE_BYTES - 1));
+	address &= ~NATIVE_MASK;
+
+	// if we're here, and native size is larger or equal to the target, we need exactly 2 reads
+	if (NATIVE_BYTES >= TARGET_BYTES)
+	{
+		// little-endian case
+		if (Endian == ENDIANNESS_LITTLE)
+		{
+			// read flags from lower address
+			u16 flags = 0;
+			NativeType curmask = (NativeType)mask << offsbits;
+			if (curmask != 0) flags |= lropf(address, curmask);
+
+			// read flags from upper address
+			offsbits = NATIVE_BITS - offsbits;
+			curmask = mask >> offsbits;
+			if (curmask != 0) flags |= lropf(address + NATIVE_STEP, curmask);
+			return flags;
+		}
+
+		// big-endian case
+		else
+		{
+			// left-justify the mask to the target type
+			constexpr u32 LEFT_JUSTIFY_TARGET_TO_NATIVE_SHIFT = ((NATIVE_BITS >= TARGET_BITS) ? (NATIVE_BITS - TARGET_BITS) : 0);
+			u16 flags = 0;
+			NativeType ljmask = (NativeType)mask << LEFT_JUSTIFY_TARGET_TO_NATIVE_SHIFT;
+			NativeType curmask = ljmask >> offsbits;
+
+			// read flags from lower address
+			if (curmask != 0) flags |= lropf(address, curmask);
+			offsbits = NATIVE_BITS - offsbits;
+
+			// read flags from upper address
+			curmask = ljmask << offsbits;
+			if (curmask != 0) flags |= lropf(address + NATIVE_STEP, curmask);
+
+			// return the result
+			return flags;
+		}
+	}
+
+	// if we're here, then we have 2 or more reads needed to get our final result
+	else
+	{
+		// compute the maximum number of loops; we do it this way so that there are
+		// a fixed number of loops for the compiler to unroll if it desires
+		constexpr u32 MAX_SPLITS_MINUS_ONE = TARGET_BYTES / NATIVE_BYTES - 1;
+		u16 flags = 0;
+
+		// little-endian case
+		if (Endian == ENDIANNESS_LITTLE)
+		{
+			// read flags from first address
+			NativeType curmask = mask << offsbits;
+			if (curmask != 0) flags |= lropf(address, curmask);
+
+			// read flags from subsequent addresses
+			offsbits = NATIVE_BITS - offsbits;
+			for (u32 index = 0; index < MAX_SPLITS_MINUS_ONE; index++)
+			{
+				address += NATIVE_STEP;
+				curmask = mask >> offsbits;
+				if (curmask != 0) flags |= lropf(address, curmask);
+				offsbits += NATIVE_BITS;
+			}
+
+			// if we're not aligned and we still have bits left, read flags from last address
+			if (!Aligned && offsbits < TARGET_BITS)
+			{
+				curmask = mask >> offsbits;
+				if (curmask != 0) flags |= lropf(address + NATIVE_STEP, curmask);
+			}
+		}
+
+		// big-endian case
+		else
+		{
+			// read flags from first address
+			offsbits = TARGET_BITS - (NATIVE_BITS - offsbits);
+			NativeType curmask = mask >> offsbits;
+			if (curmask != 0) flags |= lropf(address, curmask);
+
+			// read flags from subsequent addresses
+			for (u32 index = 0; index < MAX_SPLITS_MINUS_ONE; index++)
+			{
+				offsbits -= NATIVE_BITS;
+				address += NATIVE_STEP;
+				curmask = mask >> offsbits;
+				if (curmask != 0) flags |= lropf(address, curmask);
+			}
+
+			// if we're not aligned and we still have bits left, read flags from the last address
+			if (!Aligned && offsbits != 0)
+			{
+				offsbits = NATIVE_BITS - offsbits;
+				curmask = mask << offsbits;
+				if (curmask != 0) flags |= lropf(address + NATIVE_STEP, curmask);
+			}
+		}
+		return flags;
+	}
+}
+
+// generic direct write flags lookup
+template<int Width, int AddrShift, endianness_t Endian, int TargetWidth, bool Aligned, typename TF> u16 lookup_memory_write_generic_flags(TF lwopf, offs_t address, typename emu::detail::handler_entry_size<TargetWidth>::uX mask)
+{
+	using NativeType = typename emu::detail::handler_entry_size<Width>::uX;
+
+	constexpr u32 TARGET_BYTES = 1 << TargetWidth;
+	constexpr u32 TARGET_BITS = 8 * TARGET_BYTES;
+	constexpr u32 NATIVE_BYTES = 1 << Width;
+	constexpr u32 NATIVE_BITS = 8 * NATIVE_BYTES;
+	constexpr u32 NATIVE_STEP = AddrShift >= 0 ? NATIVE_BYTES << iabs(AddrShift) : NATIVE_BYTES >> iabs(AddrShift);
+	constexpr u32 NATIVE_MASK = Width + AddrShift >= 0 ? (1 << (Width + AddrShift)) - 1 : 0;
+
+	// equal to native size and aligned; simple pass-through to the native flags lookup
+	if (NATIVE_BYTES == TARGET_BYTES && (Aligned || (address & NATIVE_MASK) == 0))
+		return lwopf(address & ~NATIVE_MASK, mask);
+
+	// if native size is larger, see if we can do a single masked flags lookup (guaranteed if we're aligned)
+	if (NATIVE_BYTES > TARGET_BYTES)
+	{
+		u32 offsbits = 8 * (memory_offset_to_byte(address, AddrShift) & (NATIVE_BYTES - (Aligned ? TARGET_BYTES : 1)));
+		if (Aligned || (offsbits + TARGET_BITS <= NATIVE_BITS))
+		{
+			if (Endian != ENDIANNESS_LITTLE) offsbits = NATIVE_BITS - TARGET_BITS - offsbits;
+			return lwopf(address & ~NATIVE_MASK, (NativeType)mask << offsbits);
+		}
+	}
+
+	// determine our alignment against the native boundaries, and mask the address
+	u32 offsbits = 8 * (memory_offset_to_byte(address, AddrShift) & (NATIVE_BYTES - 1));
+	address &= ~NATIVE_MASK;
+
+	// if we're here, and native size is larger or equal to the target, we need exactly 2 lookups
+	if (NATIVE_BYTES >= TARGET_BYTES)
+	{
+		// little-endian case
+		if (Endian == ENDIANNESS_LITTLE)
+		{
+			// lookup flags from lower address
+			u16 flags = 0;
+			NativeType curmask = (NativeType)mask << offsbits;
+			if (curmask != 0) flags |= lwopf(address, curmask);
+
+			// lookup flags from upper address
+			offsbits = NATIVE_BITS - offsbits;
+			curmask = mask >> offsbits;
+			if (curmask != 0) flags |= lwopf(address + NATIVE_STEP, curmask);
+			return flags;
+		}
+
+		// big-endian case
+		else
+		{
+			// left-justify the mask to the target type
+			u16 flags = 0;
+			constexpr u32 LEFT_JUSTIFY_TARGET_TO_NATIVE_SHIFT = ((NATIVE_BITS >= TARGET_BITS) ? (NATIVE_BITS - TARGET_BITS) : 0);
+			NativeType ljmask = (NativeType)mask << LEFT_JUSTIFY_TARGET_TO_NATIVE_SHIFT;
+
+			// lookup flags from lower address
+			NativeType curmask = ljmask >> offsbits;
+			if (curmask != 0) flags |= lwopf(address, curmask);
+
+			// lookup falgs from upper address
+			offsbits = NATIVE_BITS - offsbits;
+			curmask = ljmask << offsbits;
+			if (curmask != 0) flags |= lwopf(address + NATIVE_STEP, curmask);
+			return flags;
+		}
+	}
+
+	// if we're here, then we have 2 or more lookups needed to get our final result
+	else
+	{
+		// compute the maximum number of loops; we do it this way so that there are
+		// a fixed number of loops for the compiler to unroll if it desires
+		constexpr u32 MAX_SPLITS_MINUS_ONE = TARGET_BYTES / NATIVE_BYTES - 1;
+		u16 flags = 0;
+
+		// little-endian case
+		if (Endian == ENDIANNESS_LITTLE)
+		{
+			// lookup flags from first address
+			NativeType curmask = mask << offsbits;
+			if (curmask != 0) flags |= lwopf(address, curmask);
+
+			// lookup flags from subsequent addresses
+			offsbits = NATIVE_BITS - offsbits;
+			for (u32 index = 0; index < MAX_SPLITS_MINUS_ONE; index++)
+			{
+				address += NATIVE_STEP;
+				curmask = mask >> offsbits;
+				if (curmask != 0) flags |= lwopf(address, curmask);
+				offsbits += NATIVE_BITS;
+			}
+
+			// if we're not aligned and we still have bits left, lookup flags last address
+			if (!Aligned && offsbits < TARGET_BITS)
+			{
+				curmask = mask >> offsbits;
+				if (curmask != 0) flags |= lwopf(address + NATIVE_STEP, curmask);
+			}
+		}
+
+		// big-endian case
+		else
+		{
+			// lookup flags from first address
+			offsbits = TARGET_BITS - (NATIVE_BITS - offsbits);
+			NativeType curmask = mask >> offsbits;
+			if (curmask != 0) flags |= lwopf(address, curmask);
+
+			// lookup flags from subsequent addresses
+			for (u32 index = 0; index < MAX_SPLITS_MINUS_ONE; index++)
+			{
+				offsbits -= NATIVE_BITS;
+				address += NATIVE_STEP;
+				curmask = mask >> offsbits;
+				if (curmask != 0) flags |= lwopf(address, curmask);
+			}
+
+			// if we're not aligned and we still have bits left, lookup falgs from the last address
+			if (!Aligned && offsbits != 0)
+			{
+				offsbits = NATIVE_BITS - offsbits;
+				curmask = mask << offsbits;
+				if (curmask != 0) flags |= lwopf(address + NATIVE_STEP, curmask);
+			}
+		}
+		return flags;
+	}
+}
+
 // ======================> Direct dispatching
 
 template<int Level, int Width, int AddrShift> typename emu::detail::handler_entry_size<Width>::uX dispatch_read(offs_t mask, offs_t offset, typename emu::detail::handler_entry_size<Width>::uX mem_mask, const handler_entry_read<Width, AddrShift> *const *dispatch)
@@ -1291,6 +1589,19 @@ template<int Level, int Width, int AddrShift> u16 dispatch_write_flags(offs_t ma
 {
 	static constexpr u32 LowBits  = emu::detail::handler_entry_dispatch_level_to_lowbits(Level, Width, AddrShift);
 	return dispatch[(offset & mask) >> LowBits]->write_flags(offset, data, mem_mask);
+}
+
+template<int Level, int Width, int AddrShift> u16 dispatch_lookup_read_flags(offs_t mask, offs_t offset, typename emu::detail::handler_entry_size<Width>::uX mem_mask, const handler_entry_read<Width, AddrShift> *const *dispatch)
+{
+	static constexpr u32 LowBits  = emu::detail::handler_entry_dispatch_level_to_lowbits(Level, Width, AddrShift);
+	return dispatch[(offset & mask) >> LowBits]->lookup_flags(offset, mem_mask);
+}
+
+
+template<int Level, int Width, int AddrShift> u16 dispatch_lookup_write_flags(offs_t mask, offs_t offset, typename emu::detail::handler_entry_size<Width>::uX mem_mask, const handler_entry_write<Width, AddrShift> *const *dispatch)
+{
+	static constexpr u32 LowBits  = emu::detail::handler_entry_dispatch_level_to_lowbits(Level, Width, AddrShift);
+	return dispatch[(offset & mask) >> LowBits]->lookup_flags(offset, mem_mask);
 }
 
 
@@ -1322,10 +1633,12 @@ public:
 		return *m_space;
 	}
 
-	auto rop()  { return [this](offs_t offset, NativeType mask) -> NativeType { return read_native(offset, mask); }; }
-	auto ropf() { return [this](offs_t offset, NativeType mask) -> std::pair<NativeType, u16> { return read_native_flags(offset, mask); }; }
-	auto wop()  { return [this](offs_t offset, NativeType data, NativeType mask) -> void { write_native(offset, data, mask); }; }
-	auto wopf() { return [this](offs_t offset, NativeType data, NativeType mask) -> u16 { return write_native_flags(offset, data, mask); }; }
+	auto rop()   { return [this](offs_t offset, NativeType mask) -> NativeType { return read_native(offset, mask); }; }
+	auto ropf()  { return [this](offs_t offset, NativeType mask) -> std::pair<NativeType, u16> { return read_native_flags(offset, mask); }; }
+	auto lropf() { return [this](offs_t offset, NativeType mask) -> u16 { return lookup_read_native_flags(offset, mask); }; }
+	auto wop()   { return [this](offs_t offset, NativeType data, NativeType mask) -> void { write_native(offset, data, mask); }; }
+	auto wopf()  { return [this](offs_t offset, NativeType data, NativeType mask) -> u16 { return write_native_flags(offset, data, mask); }; }
+	auto lwopf() { return [this](offs_t offset, NativeType mask) -> u16 { return lookup_write_native_flags(offset, mask); }; }
 
 	u8  read_byte(offs_t address) { if constexpr(Width == 0) return read_native(address & ~NATIVE_MASK); else return memory_read_generic<Width, AddrShift, Endian, 0, true>(rop(), address, 0xff); }
 	u16 read_word(offs_t address) { if constexpr(Width == 1) return read_native(address & ~NATIVE_MASK); else return memory_read_generic<Width, AddrShift, Endian, 1, true>(rop(), address, 0xffff); }
@@ -1384,6 +1697,34 @@ public:
 	u16 write_qword_unaligned_flags(offs_t address, u64 data) { return memory_write_generic_flags<Width, AddrShift, Endian, 3, false>(wopf(), address, data, 0xffffffffffffffffU); }
 	u16 write_qword_unaligned_flags(offs_t address, u64 data, u64 mask) { return memory_write_generic_flags<Width, AddrShift, Endian, 3, false>(wopf(), address, data, mask); }
 
+	u16 lookup_read_byte_flags(offs_t address) { if constexpr(Width == 0) return lookup_read_native_flags(address & ~NATIVE_MASK); else return lookup_memory_read_generic_flags<Width, AddrShift, Endian, 0, true>(lropf(), address, 0xff); }
+	u16 lookup_read_word_flags(offs_t address) { if constexpr(Width == 1) return lookup_read_native_flags(address & ~NATIVE_MASK); else return lookup_memory_read_generic_flags<Width, AddrShift, Endian, 1, true>(lropf(), address, 0xffff); }
+	u16 lookup_read_word_flags(offs_t address, u16 mask) { return lookup_memory_read_generic_flags<Width, AddrShift, Endian, 1, true>(lropf(), address, mask); }
+	u16 lookup_read_word_unaligned_flags(offs_t address) { return lookup_memory_read_generic_flags<Width, AddrShift, Endian, 1, false>(lropf(), address, 0xffff); }
+	u16 lookup_read_word_unaligned_flags(offs_t address, u16 mask) { return lookup_memory_read_generic_flags<Width, AddrShift, Endian, 1, false>(lropf(), address, mask); }
+	u16 lookup_read_dword_flags(offs_t address) { if constexpr(Width == 2) return lookup_read_native_flags(address & ~NATIVE_MASK); else return lookup_memory_read_generic_flags<Width, AddrShift, Endian, 2, true>(lropf(), address, 0xffffffff); }
+	u16 lookup_read_dword_flags(offs_t address, u32 mask) { return lookup_memory_read_generic_flags<Width, AddrShift, Endian, 2, true>(lropf(), address, mask); }
+	u16 lookup_read_dword_unaligned_flags(offs_t address) { return lookup_memory_read_generic_flags<Width, AddrShift, Endian, 2, false>(lropf(), address, 0xffffffff); }
+	u16 lookup_read_dword_unaligned_flags(offs_t address, u32 mask) { return lookup_memory_read_generic_flags<Width, AddrShift, Endian, 2, false>(lropf(), address, mask); }
+	u16 lookup_read_qword_flags(offs_t address) { if constexpr(Width == 3) return lookup_read_native_flags(address & ~NATIVE_MASK); else return lookup_memory_read_generic_flags<Width, AddrShift, Endian, 3, true>(lropf(), address, 0xffffffffffffffffU); }
+	u16 lookup_read_qword_flags(offs_t address, u64 mask) { return lookup_memory_read_generic_flags<Width, AddrShift, Endian, 3, true>(lropf(), address, mask); }
+	u16 lookup_read_qword_unaligned_flags(offs_t address) { return lookup_memory_read_generic_flags<Width, AddrShift, Endian, 3, false>(lropf(), address, 0xffffffffffffffffU); }
+	u16 lookup_read_qword_unaligned_flags(offs_t address, u64 mask) { return lookup_memory_read_generic_flags<Width, AddrShift, Endian, 3, false>(lropf(), address, mask); }
+
+	u16 lookup_write_byte_flags(offs_t address) { if constexpr(Width == 0) return lookup_write_native_flags(address & ~NATIVE_MASK); else return lookup_memory_write_generic_flags<Width, AddrShift, Endian, 0, true>(lwopf(), address, 0xff); }
+	u16 lookup_write_word_flags(offs_t address) { if constexpr(Width == 1) return lookup_write_native_flags(address & ~NATIVE_MASK); else return lookup_memory_write_generic_flags<Width, AddrShift, Endian, 1, true>(lwopf(), address, 0xffff); }
+	u16 lookup_write_word_flags(offs_t address, u16 mask) { return lookup_memory_write_generic_flags<Width, AddrShift, Endian, 1, true>(lwopf(), address, mask); }
+	u16 lookup_write_word_unaligned_flags(offs_t address) { return lookup_memory_write_generic_flags<Width, AddrShift, Endian, 1, false>(lwopf(), address, 0xffff); }
+	u16 lookup_write_word_unaligned_flags(offs_t address, u16 mask) { return lookup_memory_write_generic_flags<Width, AddrShift, Endian, 1, false>(lwopf(), address, mask); }
+	u16 lookup_write_dword_flags(offs_t address) { if constexpr(Width == 2) return lookup_write_native_flags(address & ~NATIVE_MASK); else return lookup_memory_write_generic_flags<Width, AddrShift, Endian, 2, true>(lwopf(), address, 0xffffffff); }
+	u16 lookup_write_dword_flags(offs_t address, u32 mask) { return lookup_memory_write_generic_flags<Width, AddrShift, Endian, 2, true>(lwopf(), address, mask); }
+	u16 lookup_write_dword_unaligned_flags(offs_t address) { return lookup_memory_write_generic_flags<Width, AddrShift, Endian, 2, false>(lwopf(), address, 0xffffffff); }
+	u16 lookup_write_dword_unaligned_flags(offs_t address, u32 mask) { return lookup_memory_write_generic_flags<Width, AddrShift, Endian, 2, false>(lwopf(), address, mask); }
+	u16 lookup_write_qword_flags(offs_t address) { if constexpr(Width == 3) return lookup_write_native_flags(address & ~NATIVE_MASK); else return lookup_memory_write_generic_flags<Width, AddrShift, Endian, 3, true>(lwopf(), address, 0xffffffffffffffffU); }
+	u16 lookup_write_qword_flags(offs_t address, u64 mask) { return lookup_memory_write_generic_flags<Width, AddrShift, Endian, 3, true>(wop(), address, mask); }
+	u16 lookup_write_qword_unaligned_flags(offs_t address) { return lookup_memory_write_generic_flags<Width, AddrShift, Endian, 3, false>(lwopf(), address, 0xffffffffffffffffU); }
+	u16 lookup_write_qword_unaligned_flags(offs_t address, u64 mask) { return lookup_memory_write_generic_flags<Width, AddrShift, Endian, 3, false>(lwopf(), address, mask); }
+
 private:
 	address_space *             m_space;
 
@@ -1406,6 +1747,14 @@ private:
 
 	u16 write_native_flags(offs_t address, NativeType data, NativeType mask = ~NativeType(0)) {
 		return dispatch_write_flags<Level, Width, AddrShift>(offs_t(-1), address & m_addrmask, data, mask, m_dispatch_write);
+	}
+
+	u16 lookup_read_native_flags(offs_t address, NativeType mask = ~NativeType(0)) {
+		return dispatch_lookup_read_flags<Level, Width, AddrShift>(offs_t(-1), address & m_addrmask, mask, m_dispatch_read);
+	}
+
+	u16 lookup_write_native_flags(offs_t address, NativeType mask = ~NativeType(0)) {
+		return dispatch_lookup_write_flags<Level, Width, AddrShift>(offs_t(-1), address & m_addrmask, mask, m_dispatch_write);
 	}
 
 	void set(address_space *space, std::pair<const void *, const void *> rw);
@@ -1467,10 +1816,12 @@ public:
 		return m_cache_r->get_ptr(address);
 	}
 
-	auto rop()  { return [this](offs_t offset, NativeType mask) -> NativeType { return read_native(offset, mask); }; }
-	auto ropf() { return [this](offs_t offset, NativeType mask) -> std::pair<NativeType, u16> { return read_native_flags(offset, mask); }; }
-	auto wop()  { return [this](offs_t offset, NativeType data, NativeType mask) -> void { write_native(offset, data, mask); }; }
-	auto wopf() { return [this](offs_t offset, NativeType data, NativeType mask) -> u16 { return write_native_flags(offset, data, mask); }; }
+	auto rop()   { return [this](offs_t offset, NativeType mask) -> NativeType { return read_native(offset, mask); }; }
+	auto ropf()  { return [this](offs_t offset, NativeType mask) -> std::pair<NativeType, u16> { return read_native_flags(offset, mask); }; }
+	auto lropf() { return [this](offs_t offset, NativeType mask) -> u16 { return lookup_read_native_flags(offset, mask); }; }
+	auto wop()   { return [this](offs_t offset, NativeType data, NativeType mask) -> void { write_native(offset, data, mask); }; }
+	auto wopf()  { return [this](offs_t offset, NativeType data, NativeType mask) -> u16 { return write_native_flags(offset, data, mask); }; }
+	auto lwopf() { return [this](offs_t offset, NativeType mask) -> u16 { return lookup_write_native_flags(offset, mask); }; }
 
 	u8  read_byte(offs_t address) { if constexpr(Width == 0) return read_native(address & ~NATIVE_MASK); else return memory_read_generic<Width, AddrShift, Endian, 0, true>(rop(), address, 0xff); }
 	u16 read_word(offs_t address) { if constexpr(Width == 1) return read_native(address & ~NATIVE_MASK); else return memory_read_generic<Width, AddrShift, Endian, 1, true>(rop(), address, 0xffff); }
@@ -1529,6 +1880,35 @@ public:
 	u16 write_qword_unaligned_flags(offs_t address, u64 data) { return memory_write_generic_flags<Width, AddrShift, Endian, 3, false>(wopf(), address, data, 0xffffffffffffffffU); }
 	u16 write_qword_unaligned_flags(offs_t address, u64 data, u64 mask) { return memory_write_generic_flags<Width, AddrShift, Endian, 3, false>(wopf(), address, data, mask); }
 
+
+	u16 lookup_read_byte_flags(offs_t address) { if constexpr(Width == 0) return lookup_read_native_flags(address & ~NATIVE_MASK); else return lookup_memory_read_generic_flags<Width, AddrShift, Endian, 0, true>(lropf(), address, 0xff); }
+	u16 lookup_read_word_flags(offs_t address) { if constexpr(Width == 1) return lookup_read_native_flags(address & ~NATIVE_MASK); else return lookup_memory_read_generic_flags<Width, AddrShift, Endian, 1, true>(lropf(), address, 0xffff); }
+	u16 lookup_read_word_flags(offs_t address, u16 mask) { return lookup_memory_read_generic_flags<Width, AddrShift, Endian, 1, true>(lropf(), address, mask); }
+	u16 lookup_read_word_unaligned_flags(offs_t address) { return lookup_memory_read_generic_flags<Width, AddrShift, Endian, 1, false>(lropf(), address, 0xffff); }
+	u16 lookup_read_word_unaligned_flags(offs_t address, u16 mask) { return lookup_memory_read_generic_flags<Width, AddrShift, Endian, 1, false>(lropf(), address, mask); }
+	u16 lookup_read_dword_flags(offs_t address) { if constexpr(Width == 2) return lookup_read_native_flags(address & ~NATIVE_MASK); else return lookup_memory_read_generic_flags<Width, AddrShift, Endian, 2, true>(lropf(), address, 0xffffffff); }
+	u16 lookup_read_dword_flags(offs_t address, u32 mask) { return lookup_memory_read_generic_flags<Width, AddrShift, Endian, 2, true>(lropf(), address, mask); }
+	u16 lookup_read_dword_unaligned_flags(offs_t address) { return lookup_memory_read_generic_flags<Width, AddrShift, Endian, 2, false>(lropf(), address, 0xffffffff); }
+	u16 lookup_read_dword_unaligned_flags(offs_t address, u32 mask) { return lookup_memory_read_generic_flags<Width, AddrShift, Endian, 2, false>(lropf(), address, mask); }
+	u16 lookup_read_qword_flags(offs_t address) { if constexpr(Width == 3) return lookup_read_native_flags(address & ~NATIVE_MASK); else return lookup_memory_read_generic_flags<Width, AddrShift, Endian, 3, true>(lropf(), address, 0xffffffffffffffffU); }
+	u16 lookup_read_qword_flags(offs_t address, u64 mask) { return lookup_memory_read_generic_flags<Width, AddrShift, Endian, 3, true>(lropf(), address, mask); }
+	u16 lookup_read_qword_unaligned_flags(offs_t address) { return lookup_memory_read_generic_flags<Width, AddrShift, Endian, 3, false>(lropf(), address, 0xffffffffffffffffU); }
+	u16 lookup_read_qword_unaligned_flags(offs_t address, u64 mask) { return lookup_memory_read_generic_flags<Width, AddrShift, Endian, 3, false>(lropf(), address, mask); }
+
+	u16 lookup_write_byte_flags(offs_t address) { if constexpr(Width == 0) return lookup_write_native_flags(address & ~NATIVE_MASK); else return lookup_memory_write_generic_flags<Width, AddrShift, Endian, 0, true>(lwopf(), address, 0xff); }
+	u16 lookup_write_word_flags(offs_t address) { if constexpr(Width == 1) return lookup_write_native_flags(address & ~NATIVE_MASK); else return lookup_memory_write_generic_flags<Width, AddrShift, Endian, 1, true>(lwopf(), address, 0xffff); }
+	u16 lookup_write_word_flags(offs_t address, u16 mask) { return lookup_memory_write_generic_flags<Width, AddrShift, Endian, 1, true>(lwopf(), address, mask); }
+	u16 lookup_write_word_unaligned_flags(offs_t address) { return lookup_memory_write_generic_flags<Width, AddrShift, Endian, 1, false>(lwopf(), address, 0xffff); }
+	u16 lookup_write_word_unaligned_flags(offs_t address, u16 mask) { return lookup_memory_write_generic_flags<Width, AddrShift, Endian, 1, false>(lwopf(), address, mask); }
+	u16 lookup_write_dword_flags(offs_t address) { if constexpr(Width == 2) return lookup_write_native_flags(address & ~NATIVE_MASK); else return lookup_memory_write_generic_flags<Width, AddrShift, Endian, 2, true>(lwopf(), address, 0xffffffff); }
+	u16 lookup_write_dword_flags(offs_t address, u32 mask) { return lookup_memory_write_generic_flags<Width, AddrShift, Endian, 2, true>(lwopf(), address, mask); }
+	u16 lookup_write_dword_unaligned_flags(offs_t address) { return lookup_memory_write_generic_flags<Width, AddrShift, Endian, 2, false>(lwopf(), address, 0xffffffff); }
+	u16 lookup_write_dword_unaligned_flags(offs_t address, u32 mask) { return lookup_memory_write_generic_flags<Width, AddrShift, Endian, 2, false>(lwopf(), address, mask); }
+	u16 lookup_write_qword_flags(offs_t address) { if constexpr(Width == 3) return lookup_write_native_flags(address & ~NATIVE_MASK); else return lookup_memory_write_generic_flags<Width, AddrShift, Endian, 3, true>(lwopf(), address, 0xffffffffffffffffU); }
+	u16 lookup_write_qword_flags(offs_t address, u64 mask) { return lookup_memory_write_generic_flags<Width, AddrShift, Endian, 3, true>(wop(), address, mask); }
+	u16 lookup_write_qword_unaligned_flags(offs_t address) { return lookup_memory_write_generic_flags<Width, AddrShift, Endian, 3, false>(lwopf(), address, 0xffffffffffffffffU); }
+	u16 lookup_write_qword_unaligned_flags(offs_t address, u64 mask) { return lookup_memory_write_generic_flags<Width, AddrShift, Endian, 3, false>(lwopf(), address, mask); }
+
 private:
 	address_space *             m_space;
 
@@ -1543,10 +1923,14 @@ private:
 	handler_entry_read <Width, AddrShift> *m_root_read;  // decode tree roots
 	handler_entry_write<Width, AddrShift> *m_root_write;
 
+	util::notifier_subscription m_subscription;
+
 	NativeType read_native(offs_t address, NativeType mask = ~NativeType(0));
 	void write_native(offs_t address, NativeType data, NativeType mask = ~NativeType(0));
 	std::pair<NativeType, u16> read_native_flags(offs_t address, NativeType mask = ~NativeType(0));
 	u16 write_native_flags(offs_t address, NativeType data, NativeType mask = ~NativeType(0));
+	u16 lookup_read_native_flags(offs_t address, NativeType mask = ~NativeType(0));
+	u16 lookup_write_native_flags(offs_t address, NativeType mask = ~NativeType(0));
 
 	void set(address_space *space, std::pair<void *, void *> rw);
 };
@@ -1687,32 +2071,32 @@ public:
 	virtual void install_device_delegate(offs_t addrstart, offs_t addrend, device_t &device, address_map_constructor &map, u64 unitmask = 0, int cswidth = 0, u16 flags = 0) = 0;
 
 	// install taps without mirroring
-	memory_passthrough_handler *install_read_tap(offs_t addrstart, offs_t addrend, std::string name, std::function<void (offs_t offset, u8  &data, u8  mem_mask)> tap, memory_passthrough_handler *mph = nullptr) { return install_read_tap(addrstart, addrend, 0, name, tap, mph); }
-	memory_passthrough_handler *install_read_tap(offs_t addrstart, offs_t addrend, std::string name, std::function<void (offs_t offset, u16 &data, u16 mem_mask)> tap, memory_passthrough_handler *mph = nullptr) { return install_read_tap(addrstart, addrend, 0, name, tap, mph); }
-	memory_passthrough_handler *install_read_tap(offs_t addrstart, offs_t addrend, std::string name, std::function<void (offs_t offset, u32 &data, u32 mem_mask)> tap, memory_passthrough_handler *mph = nullptr) { return install_read_tap(addrstart, addrend, 0, name, tap, mph); }
-	memory_passthrough_handler *install_read_tap(offs_t addrstart, offs_t addrend, std::string name, std::function<void (offs_t offset, u64 &data, u64 mem_mask)> tap, memory_passthrough_handler *mph = nullptr) { return install_read_tap(addrstart, addrend, 0, name, tap, mph); }
-	memory_passthrough_handler *install_write_tap(offs_t addrstart, offs_t addrend, std::string name, std::function<void (offs_t offset, u8  &data, u8  mem_mask)> tap, memory_passthrough_handler *mph = nullptr) { return install_write_tap(addrstart, addrend, 0, name, tap, mph); }
-	memory_passthrough_handler *install_write_tap(offs_t addrstart, offs_t addrend, std::string name, std::function<void (offs_t offset, u16 &data, u16 mem_mask)> tap, memory_passthrough_handler *mph = nullptr) { return install_write_tap(addrstart, addrend, 0, name, tap, mph); }
-	memory_passthrough_handler *install_write_tap(offs_t addrstart, offs_t addrend, std::string name, std::function<void (offs_t offset, u32 &data, u32 mem_mask)> tap, memory_passthrough_handler *mph = nullptr) { return install_write_tap(addrstart, addrend, 0, name, tap, mph); }
-	memory_passthrough_handler *install_write_tap(offs_t addrstart, offs_t addrend, std::string name, std::function<void (offs_t offset, u64 &data, u64 mem_mask)> tap, memory_passthrough_handler *mph = nullptr) { return install_write_tap(addrstart, addrend, 0, name, tap, mph); }
-	memory_passthrough_handler *install_readwrite_tap(offs_t addrstart, offs_t addrend, std::string name, std::function<void (offs_t offset, u8  &data, u8  mem_mask)> tapr, std::function<void (offs_t offset, u8  &data, u8  mem_mask)> tapw, memory_passthrough_handler *mph = nullptr) { return install_readwrite_tap(addrstart, addrend, 0, name, tapr, tapw, mph); }
-	memory_passthrough_handler *install_readwrite_tap(offs_t addrstart, offs_t addrend, std::string name, std::function<void (offs_t offset, u16 &data, u16 mem_mask)> tapr, std::function<void (offs_t offset, u16 &data, u16 mem_mask)> tapw, memory_passthrough_handler *mph = nullptr) { return install_readwrite_tap(addrstart, addrend, 0, name, tapr, tapw, mph); }
-	memory_passthrough_handler *install_readwrite_tap(offs_t addrstart, offs_t addrend, std::string name, std::function<void (offs_t offset, u32 &data, u32 mem_mask)> tapr, std::function<void (offs_t offset, u32 &data, u32 mem_mask)> tapw, memory_passthrough_handler *mph = nullptr) { return install_readwrite_tap(addrstart, addrend, 0, name, tapr, tapw, mph); }
-	memory_passthrough_handler *install_readwrite_tap(offs_t addrstart, offs_t addrend, std::string name, std::function<void (offs_t offset, u64 &data, u64 mem_mask)> tapr, std::function<void (offs_t offset, u64 &data, u64 mem_mask)> tapw, memory_passthrough_handler *mph = nullptr) { return install_readwrite_tap(addrstart, addrend, 0, name, tapr, tapw, mph); }
+	memory_passthrough_handler install_read_tap(offs_t addrstart, offs_t addrend, std::string name, std::function<void (offs_t offset, u8  &data, u8  mem_mask)> tap, memory_passthrough_handler *mph = nullptr) { return install_read_tap(addrstart, addrend, 0, name, tap, mph); }
+	memory_passthrough_handler install_read_tap(offs_t addrstart, offs_t addrend, std::string name, std::function<void (offs_t offset, u16 &data, u16 mem_mask)> tap, memory_passthrough_handler *mph = nullptr) { return install_read_tap(addrstart, addrend, 0, name, tap, mph); }
+	memory_passthrough_handler install_read_tap(offs_t addrstart, offs_t addrend, std::string name, std::function<void (offs_t offset, u32 &data, u32 mem_mask)> tap, memory_passthrough_handler *mph = nullptr) { return install_read_tap(addrstart, addrend, 0, name, tap, mph); }
+	memory_passthrough_handler install_read_tap(offs_t addrstart, offs_t addrend, std::string name, std::function<void (offs_t offset, u64 &data, u64 mem_mask)> tap, memory_passthrough_handler *mph = nullptr) { return install_read_tap(addrstart, addrend, 0, name, tap, mph); }
+	memory_passthrough_handler install_write_tap(offs_t addrstart, offs_t addrend, std::string name, std::function<void (offs_t offset, u8  &data, u8  mem_mask)> tap, memory_passthrough_handler *mph = nullptr) { return install_write_tap(addrstart, addrend, 0, name, tap, mph); }
+	memory_passthrough_handler install_write_tap(offs_t addrstart, offs_t addrend, std::string name, std::function<void (offs_t offset, u16 &data, u16 mem_mask)> tap, memory_passthrough_handler *mph = nullptr) { return install_write_tap(addrstart, addrend, 0, name, tap, mph); }
+	memory_passthrough_handler install_write_tap(offs_t addrstart, offs_t addrend, std::string name, std::function<void (offs_t offset, u32 &data, u32 mem_mask)> tap, memory_passthrough_handler *mph = nullptr) { return install_write_tap(addrstart, addrend, 0, name, tap, mph); }
+	memory_passthrough_handler install_write_tap(offs_t addrstart, offs_t addrend, std::string name, std::function<void (offs_t offset, u64 &data, u64 mem_mask)> tap, memory_passthrough_handler *mph = nullptr) { return install_write_tap(addrstart, addrend, 0, name, tap, mph); }
+	memory_passthrough_handler install_readwrite_tap(offs_t addrstart, offs_t addrend, std::string name, std::function<void (offs_t offset, u8  &data, u8  mem_mask)> tapr, std::function<void (offs_t offset, u8  &data, u8  mem_mask)> tapw, memory_passthrough_handler *mph = nullptr) { return install_readwrite_tap(addrstart, addrend, 0, name, tapr, tapw, mph); }
+	memory_passthrough_handler install_readwrite_tap(offs_t addrstart, offs_t addrend, std::string name, std::function<void (offs_t offset, u16 &data, u16 mem_mask)> tapr, std::function<void (offs_t offset, u16 &data, u16 mem_mask)> tapw, memory_passthrough_handler *mph = nullptr) { return install_readwrite_tap(addrstart, addrend, 0, name, tapr, tapw, mph); }
+	memory_passthrough_handler install_readwrite_tap(offs_t addrstart, offs_t addrend, std::string name, std::function<void (offs_t offset, u32 &data, u32 mem_mask)> tapr, std::function<void (offs_t offset, u32 &data, u32 mem_mask)> tapw, memory_passthrough_handler *mph = nullptr) { return install_readwrite_tap(addrstart, addrend, 0, name, tapr, tapw, mph); }
+	memory_passthrough_handler install_readwrite_tap(offs_t addrstart, offs_t addrend, std::string name, std::function<void (offs_t offset, u64 &data, u64 mem_mask)> tapr, std::function<void (offs_t offset, u64 &data, u64 mem_mask)> tapw, memory_passthrough_handler *mph = nullptr) { return install_readwrite_tap(addrstart, addrend, 0, name, tapr, tapw, mph); }
 
 	// install taps with mirroring
-	virtual memory_passthrough_handler *install_read_tap(offs_t addrstart, offs_t addrend, offs_t addrmirror, std::string name, std::function<void (offs_t offset, u8  &data, u8  mem_mask)> tap, memory_passthrough_handler *mph = nullptr);
-	virtual memory_passthrough_handler *install_read_tap(offs_t addrstart, offs_t addrend, offs_t addrmirror, std::string name, std::function<void (offs_t offset, u16 &data, u16 mem_mask)> tap, memory_passthrough_handler *mph = nullptr);
-	virtual memory_passthrough_handler *install_read_tap(offs_t addrstart, offs_t addrend, offs_t addrmirror, std::string name, std::function<void (offs_t offset, u32 &data, u32 mem_mask)> tap, memory_passthrough_handler *mph = nullptr);
-	virtual memory_passthrough_handler *install_read_tap(offs_t addrstart, offs_t addrend, offs_t addrmirror, std::string name, std::function<void (offs_t offset, u64 &data, u64 mem_mask)> tap, memory_passthrough_handler *mph = nullptr);
-	virtual memory_passthrough_handler *install_write_tap(offs_t addrstart, offs_t addrend, offs_t addrmirror, std::string name, std::function<void (offs_t offset, u8  &data, u8  mem_mask)> tap, memory_passthrough_handler *mph = nullptr);
-	virtual memory_passthrough_handler *install_write_tap(offs_t addrstart, offs_t addrend, offs_t addrmirror, std::string name, std::function<void (offs_t offset, u16 &data, u16 mem_mask)> tap, memory_passthrough_handler *mph = nullptr);
-	virtual memory_passthrough_handler *install_write_tap(offs_t addrstart, offs_t addrend, offs_t addrmirror, std::string name, std::function<void (offs_t offset, u32 &data, u32 mem_mask)> tap, memory_passthrough_handler *mph = nullptr);
-	virtual memory_passthrough_handler *install_write_tap(offs_t addrstart, offs_t addrend, offs_t addrmirror, std::string name, std::function<void (offs_t offset, u64 &data, u64 mem_mask)> tap, memory_passthrough_handler *mph = nullptr);
-	virtual memory_passthrough_handler *install_readwrite_tap(offs_t addrstart, offs_t addrend, offs_t addrmirror, std::string name, std::function<void (offs_t offset, u8  &data, u8  mem_mask)> tapr, std::function<void (offs_t offset, u8  &data, u8  mem_mask)> tapw, memory_passthrough_handler *mph = nullptr);
-	virtual memory_passthrough_handler *install_readwrite_tap(offs_t addrstart, offs_t addrend, offs_t addrmirror, std::string name, std::function<void (offs_t offset, u16 &data, u16 mem_mask)> tapr, std::function<void (offs_t offset, u16 &data, u16 mem_mask)> tapw, memory_passthrough_handler *mph = nullptr);
-	virtual memory_passthrough_handler *install_readwrite_tap(offs_t addrstart, offs_t addrend, offs_t addrmirror, std::string name, std::function<void (offs_t offset, u32 &data, u32 mem_mask)> tapr, std::function<void (offs_t offset, u32 &data, u32 mem_mask)> tapw, memory_passthrough_handler *mph = nullptr);
-	virtual memory_passthrough_handler *install_readwrite_tap(offs_t addrstart, offs_t addrend, offs_t addrmirror, std::string name, std::function<void (offs_t offset, u64 &data, u64 mem_mask)> tapr, std::function<void (offs_t offset, u64 &data, u64 mem_mask)> tapw, memory_passthrough_handler *mph = nullptr);
+	virtual memory_passthrough_handler install_read_tap(offs_t addrstart, offs_t addrend, offs_t addrmirror, std::string name, std::function<void (offs_t offset, u8  &data, u8  mem_mask)> tap, memory_passthrough_handler *mph = nullptr);
+	virtual memory_passthrough_handler install_read_tap(offs_t addrstart, offs_t addrend, offs_t addrmirror, std::string name, std::function<void (offs_t offset, u16 &data, u16 mem_mask)> tap, memory_passthrough_handler *mph = nullptr);
+	virtual memory_passthrough_handler install_read_tap(offs_t addrstart, offs_t addrend, offs_t addrmirror, std::string name, std::function<void (offs_t offset, u32 &data, u32 mem_mask)> tap, memory_passthrough_handler *mph = nullptr);
+	virtual memory_passthrough_handler install_read_tap(offs_t addrstart, offs_t addrend, offs_t addrmirror, std::string name, std::function<void (offs_t offset, u64 &data, u64 mem_mask)> tap, memory_passthrough_handler *mph = nullptr);
+	virtual memory_passthrough_handler install_write_tap(offs_t addrstart, offs_t addrend, offs_t addrmirror, std::string name, std::function<void (offs_t offset, u8  &data, u8  mem_mask)> tap, memory_passthrough_handler *mph = nullptr);
+	virtual memory_passthrough_handler install_write_tap(offs_t addrstart, offs_t addrend, offs_t addrmirror, std::string name, std::function<void (offs_t offset, u16 &data, u16 mem_mask)> tap, memory_passthrough_handler *mph = nullptr);
+	virtual memory_passthrough_handler install_write_tap(offs_t addrstart, offs_t addrend, offs_t addrmirror, std::string name, std::function<void (offs_t offset, u32 &data, u32 mem_mask)> tap, memory_passthrough_handler *mph = nullptr);
+	virtual memory_passthrough_handler install_write_tap(offs_t addrstart, offs_t addrend, offs_t addrmirror, std::string name, std::function<void (offs_t offset, u64 &data, u64 mem_mask)> tap, memory_passthrough_handler *mph = nullptr);
+	virtual memory_passthrough_handler install_readwrite_tap(offs_t addrstart, offs_t addrend, offs_t addrmirror, std::string name, std::function<void (offs_t offset, u8  &data, u8  mem_mask)> tapr, std::function<void (offs_t offset, u8  &data, u8  mem_mask)> tapw, memory_passthrough_handler *mph = nullptr);
+	virtual memory_passthrough_handler install_readwrite_tap(offs_t addrstart, offs_t addrend, offs_t addrmirror, std::string name, std::function<void (offs_t offset, u16 &data, u16 mem_mask)> tapr, std::function<void (offs_t offset, u16 &data, u16 mem_mask)> tapw, memory_passthrough_handler *mph = nullptr);
+	virtual memory_passthrough_handler install_readwrite_tap(offs_t addrstart, offs_t addrend, offs_t addrmirror, std::string name, std::function<void (offs_t offset, u32 &data, u32 mem_mask)> tapr, std::function<void (offs_t offset, u32 &data, u32 mem_mask)> tapw, memory_passthrough_handler *mph = nullptr);
+	virtual memory_passthrough_handler install_readwrite_tap(offs_t addrstart, offs_t addrend, offs_t addrmirror, std::string name, std::function<void (offs_t offset, u64 &data, u64 mem_mask)> tapr, std::function<void (offs_t offset, u64 &data, u64 mem_mask)> tapw, memory_passthrough_handler *mph = nullptr);
 
 	// install views
 	void install_view(offs_t addrstart, offs_t addrend, memory_view &view) { install_view(addrstart, addrend, 0, view); }
@@ -1918,11 +2302,6 @@ class address_space : public address_space_installer
 	template<int Width, int AddrShift> friend class handler_entry_read_unmapped;
 	template<int Width, int AddrShift> friend class handler_entry_write_unmapped;
 
-	struct notifier_t {
-		std::function<void (read_or_write)> m_notifier;
-		int m_id;
-	};
-
 protected:
 	// construction/destruction
 	address_space(memory_manager &manager, device_memory_interface &memory, int spacenum);
@@ -1962,15 +2341,14 @@ public:
 		v.set(this, get_specific_info());
 	}
 
-	int add_change_notifier(std::function<void (read_or_write)> n);
-	void remove_change_notifier(int id);
+	util::notifier_subscription add_change_notifier(delegate<void (read_or_write)> &&n);
+	template <typename T> util::notifier_subscription add_change_notifier(T &&n) { return add_change_notifier(delegate<void (read_or_write)>(std::forward<T>(n))); }
 
 	void invalidate_caches(read_or_write mode) {
 		if(u32(mode) & ~m_in_notification) {
 			u32 old = m_in_notification;
 			m_in_notification |= u32(mode);
-			for(const auto &n : m_notifiers)
-				n.m_notifier(mode);
+			m_notifiers(mode);
 			m_in_notification = old;
 		}
 	}
@@ -1981,7 +2359,7 @@ public:
 
 	u64 unmap() const { return m_unmap; }
 
-	memory_passthrough_handler *make_mph();
+	std::shared_ptr<emu::detail::memory_passthrough_handler_impl> make_mph(memory_passthrough_handler *mph);
 
 	// debug helpers
 	virtual std::string get_handler_string(read_or_write readorwrite, offs_t byteaddress) const = 0;
@@ -2024,36 +2402,6 @@ public:
 	virtual void write_qword_unaligned(offs_t address, u64 data) = 0;
 	virtual void write_qword_unaligned(offs_t address, u64 data, u64 mask) = 0;
 
-	// read accessors with flags
-	virtual std::pair<u8,  u16> read_byte_flags(offs_t address) = 0;
-	virtual std::pair<u16, u16> read_word_flags(offs_t address) = 0;
-	virtual std::pair<u16, u16> read_word_flags(offs_t address, u16 mask) = 0;
-	virtual std::pair<u16, u16> read_word_unaligned_flags(offs_t address) = 0;
-	virtual std::pair<u16, u16> read_word_unaligned_flags(offs_t address, u16 mask) = 0;
-	virtual std::pair<u32, u16> read_dword_flags(offs_t address) = 0;
-	virtual std::pair<u32, u16> read_dword_flags(offs_t address, u32 mask) = 0;
-	virtual std::pair<u32, u16> read_dword_unaligned_flags(offs_t address) = 0;
-	virtual std::pair<u32, u16> read_dword_unaligned_flags(offs_t address, u32 mask) = 0;
-	virtual std::pair<u64, u16> read_qword_flags(offs_t address) = 0;
-	virtual std::pair<u64, u16> read_qword_flags(offs_t address, u64 mask) = 0;
-	virtual std::pair<u64, u16> read_qword_unaligned_flags(offs_t address) = 0;
-	virtual std::pair<u64, u16> read_qword_unaligned_flags(offs_t address, u64 mask) = 0;
-
-	// write accessors with flags
-	virtual u16 write_byte_flags(offs_t address, u8 data) = 0;
-	virtual u16 write_word_flags(offs_t address, u16 data) = 0;
-	virtual u16 write_word_flags(offs_t address, u16 data, u16 mask) = 0;
-	virtual u16 write_word_unaligned_flags(offs_t address, u16 data) = 0;
-	virtual u16 write_word_unaligned_flags(offs_t address, u16 data, u16 mask) = 0;
-	virtual u16 write_dword_flags(offs_t address, u32 data) = 0;
-	virtual u16 write_dword_flags(offs_t address, u32 data, u32 mask) = 0;
-	virtual u16 write_dword_unaligned_flags(offs_t address, u32 data) = 0;
-	virtual u16 write_dword_unaligned_flags(offs_t address, u32 data, u32 mask) = 0;
-	virtual u16 write_qword_flags(offs_t address, u64 data) = 0;
-	virtual u16 write_qword_flags(offs_t address, u64 data, u64 mask) = 0;
-	virtual u16 write_qword_unaligned_flags(offs_t address, u64 data) = 0;
-	virtual u16 write_qword_unaligned_flags(offs_t address, u64 data, u64 mask) = 0;
-
 	// setup
 	void prepare_map();
 	void prepare_device_map(address_map &map);
@@ -2088,10 +2436,9 @@ protected:
 	handler_entry           *m_nop_r;
 	handler_entry           *m_nop_w;
 
-	std::vector<std::unique_ptr<memory_passthrough_handler>> m_mphs;
+	std::vector<std::shared_ptr<emu::detail::memory_passthrough_handler_impl>> m_mphs;
 
-	std::vector<notifier_t> m_notifiers;        // notifier list for address map change
-	int                     m_notifier_id;      // next notifier id
+	util::notifier<read_or_write> m_notifiers;  // notifier list for address map change
 	u32                     m_in_notification;  // notification(s) currently being done
 };
 
@@ -2397,7 +2744,7 @@ write_native(offs_t address, typename emu::detail::handler_entry_size<Width>::uX
 	m_cache_w->write(address, data, mask);
 }
 
-void memory_passthrough_handler::remove()
+inline void emu::detail::memory_passthrough_handler_impl::remove()
 {
 	m_space.remove_passthrough(m_handlers);
 }
@@ -2421,18 +2768,19 @@ set(address_space *space, std::pair<void *, void *> rw)
 	m_space = space;
 	m_addrmask = space->addrmask();
 
-	space->add_change_notifier([this](read_or_write mode) {
-								   if(u32(mode) & u32(read_or_write::READ)) {
-									   m_addrend_r = 0;
-									   m_addrstart_r = 1;
-									   m_cache_r = nullptr;
-								   }
-								   if(u32(mode) & u32(read_or_write::WRITE)) {
-									   m_addrend_w = 0;
-									   m_addrstart_w = 1;
-									   m_cache_w = nullptr;
-								   }
-							   });
+	m_subscription = space->add_change_notifier(
+			[this] (read_or_write mode) {
+			   if(u32(mode) & u32(read_or_write::READ)) {
+				   m_addrend_r = 0;
+				   m_addrstart_r = 1;
+				   m_cache_r = nullptr;
+			   }
+			   if(u32(mode) & u32(read_or_write::WRITE)) {
+				   m_addrend_w = 0;
+				   m_addrstart_w = 1;
+				   m_cache_w = nullptr;
+			   }
+		   });
 	m_root_read  = (handler_entry_read <Width, AddrShift> *)(rw.first);
 	m_root_write = (handler_entry_write<Width, AddrShift> *)(rw.second);
 

@@ -5,11 +5,13 @@
 
 #pragma once
 
+#include "vme.h"
+
 #include "bus/centronics/ctronics.h"
 #include "bus/nscsi/hd.h"
 #include "bus/rs232/rs232.h"
-#include "bus/vme/vme.h"
-#include "cpu/m68000/m68000.h"
+#include "cpu/m68000/m68020.h"
+#include "cpu/m68000/m68030.h"
 #include "imagedev/floppy.h"
 #include "machine/clock.h"
 #include "machine/msm6242.h"
@@ -35,10 +37,11 @@ protected:
 	virtual void device_add_mconfig(machine_config &config) override;
 	virtual const tiny_rom_entry *device_rom_region() const override;
 	virtual ioport_constructor device_input_ports() const override;
-	virtual void device_timer(emu_timer &timer, device_timer_id id, int param, void *ptr) override;
+
+	TIMER_CALLBACK_MEMBER(bus_error_off);
 
 private:
-	required_device<m68000_base_device> m_maincpu;
+	required_device<m68000_musashi_device> m_maincpu;
 	required_device<duscc68562_device> m_dusccterm;
 	required_device<wd33c93a_device> m_scsi;
 	required_device<upd765_family_device> m_fdc;
@@ -48,10 +51,11 @@ private:
 	required_device<centronics_device> m_centronics;
 	required_device<output_latch_device> m_cent_data_out;
 	required_device<input_buffer_device> m_cent_status_in;
-	required_device<m68000_base_device> m_oscpu;
+	required_device<m68000_musashi_device> m_oscpu;
 	required_shared_ptr<uint32_t> m_mailbox;
 	required_shared_ptr<uint32_t> m_p_ram;
 	required_region_ptr<uint32_t> m_sysrom;
+	required_ioport m_dips;
 
 	DECLARE_WRITE_LINE_MEMBER(dusirq_callback);
 	DECLARE_WRITE_LINE_MEMBER(scsiirq_callback);
@@ -60,7 +64,7 @@ private:
 	DECLARE_WRITE_LINE_MEMBER(fdcdrq_callback);
 
 	// Pointer to System ROMs needed by bootvect_r and masking RAM buffer for post reset accesses
-	memory_passthrough_handler *m_rom_shadow_tap;
+	memory_passthrough_handler m_rom_shadow_tap;
 	uint16_t    m_irq_state;
 	uint16_t    m_irq_mask;
 	uint8_t     m_rtc_reg[16];

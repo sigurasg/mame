@@ -21,7 +21,6 @@ project "formats"
 
 	includedirs {
 		MAME_DIR .. "src/osd",
-		MAME_DIR .. "src/emu",
 		MAME_DIR .. "src/lib",
 		MAME_DIR .. "src/lib/util",
 		MAME_DIR .. "3rdparty",
@@ -80,6 +79,8 @@ project "formats"
 		MAME_DIR .. "src/lib/formats/fsblk_vec.cpp",
 		MAME_DIR .. "src/lib/formats/fs_unformatted.h",
 		MAME_DIR .. "src/lib/formats/fs_unformatted.cpp",
+		MAME_DIR .. "src/lib/formats/fsmeta.h",
+		MAME_DIR .. "src/lib/formats/fsmeta.cpp",
 	}
 
 --------------------------------------------------
@@ -127,6 +128,18 @@ if opt_tool(FORMATS, "ABC800_DSK") then
 	files {
 		MAME_DIR.. "src/lib/formats/abc800_dsk.cpp",
 		MAME_DIR.. "src/lib/formats/abc800_dsk.h",
+	}
+end
+
+--------------------------------------------------
+--
+--@src/lib/formats/abc1600_dsk.h,FORMATS["ABC1600_DSK"] = true
+--------------------------------------------------
+
+if opt_tool(FORMATS, "ABC1600_DSK") then
+	files {
+		MAME_DIR.. "src/lib/formats/abc1600_dsk.cpp",
+		MAME_DIR.. "src/lib/formats/abc1600_dsk.h",
 	}
 end
 
@@ -348,6 +361,18 @@ end
 
 --------------------------------------------------
 --
+--@src/lib/formats/as_dsk.h,FORMATS["AS_DSK"] = true
+--------------------------------------------------
+
+if opt_tool(FORMATS, "AS_DSK") then
+	files {
+		MAME_DIR.. "src/lib/formats/as_dsk.cpp",
+		MAME_DIR.. "src/lib/formats/as_dsk.h",
+	}
+end
+
+--------------------------------------------------
+--
 --@src/lib/formats/atari_dsk.h,FORMATS["ATARI_DSK"] = true
 --------------------------------------------------
 
@@ -559,6 +584,18 @@ if opt_tool(FORMATS, "COCO_CAS") then
 	files {
 		MAME_DIR.. "src/lib/formats/coco_cas.cpp",
 		MAME_DIR.. "src/lib/formats/coco_cas.h",
+	}
+end
+
+--------------------------------------------------
+--
+--@src/lib/formats/coco_rawdsk.h,FORMATS["COCO_RAWDSK"] = true
+--------------------------------------------------
+
+if opt_tool(FORMATS, "COCO_RAWDSK") then
+	files {
+		MAME_DIR.. "src/lib/formats/coco_rawdsk.cpp",
+		MAME_DIR.. "src/lib/formats/coco_rawdsk.h",
 	}
 end
 
@@ -876,6 +913,30 @@ end
 
 --------------------------------------------------
 --
+--@src/lib/formats/cp68_dsk.h,FORMATS["CP68_DSK"] = true
+--------------------------------------------------
+
+if opt_tool(FORMATS, "CP68_DSK") then
+	files {
+		MAME_DIR.. "src/lib/formats/cp68_dsk.cpp",
+		MAME_DIR.. "src/lib/formats/cp68_dsk.h",
+	}
+end
+
+--------------------------------------------------
+--
+--@src/lib/formats/fdos_dsk.h,FORMATS["FDOS_DSK"] = true
+--------------------------------------------------
+
+if opt_tool(FORMATS, "FDOS_DSK") then
+	files {
+		MAME_DIR.. "src/lib/formats/fdos_dsk.cpp",
+		MAME_DIR.. "src/lib/formats/fdos_dsk.h",
+	}
+end
+
+--------------------------------------------------
+--
 --@src/lib/formats/uniflex_dsk.h,FORMATS["UNIFLEX_DSK"] = true
 --------------------------------------------------
 
@@ -1027,6 +1088,18 @@ if opt_tool(FORMATS, "HTI_TAP") then
 	files {
 		MAME_DIR.. "src/lib/formats/hti_tape.cpp",
 		MAME_DIR.. "src/lib/formats/hti_tape.h",
+	}
+end
+
+--------------------------------------------------
+--
+--@src/lib/formats/hp_ipc_dsk.h,FORMATS["HP300_DSK"] = true
+--------------------------------------------------
+
+if opt_tool(FORMATS, "HP300_DSK") then
+	files {
+		MAME_DIR.. "src/lib/formats/hp300_dsk.cpp",
+		MAME_DIR.. "src/lib/formats/hp300_dsk.h",
 	}
 end
 
@@ -1849,6 +1922,18 @@ end
 
 --------------------------------------------------
 --
+--@src/lib/formats/tim011_dsk.h,FORMATS["TIM011_DSK"] = true
+--------------------------------------------------
+
+if opt_tool(FORMATS, "TIM011_DSK") then
+	files {
+		MAME_DIR.. "src/lib/formats/tim011_dsk.cpp",
+		MAME_DIR.. "src/lib/formats/tim011_dsk.h",
+	}
+end
+
+--------------------------------------------------
+--
 --@src/lib/formats/trd_dsk.h,FORMATS["TRD_DSK"] = true
 --------------------------------------------------
 
@@ -2089,6 +2174,30 @@ end
 
 --------------------------------------------------
 --
+--@src/lib/formats/fs_fat.h,FORMATS["FS_FAT"] = true
+--------------------------------------------------
+
+if opt_tool(FORMATS, "FS_FAT") then
+	files {
+		MAME_DIR.. "src/lib/formats/fs_fat.cpp",
+		MAME_DIR.. "src/lib/formats/fs_fat.h",
+	}
+end
+
+--------------------------------------------------
+--
+--@src/lib/formats/fs_hplif.h,FORMATS["FS_HPLIF"] = true
+--------------------------------------------------
+
+if opt_tool(FORMATS, "FS_HPLIF") then
+	files {
+		MAME_DIR.. "src/lib/formats/fs_hplif.cpp",
+		MAME_DIR.. "src/lib/formats/fs_hplif.h",
+	}
+end
+
+--------------------------------------------------
+--
 --@src/lib/formats/fs_oric_jasmin.h,FORMATS["FS_ORIC_JASMIN"] = true
 --------------------------------------------------
 
@@ -2096,6 +2205,54 @@ if opt_tool(FORMATS, "FS_ORIC_JASMIN") then
 	files {
 		MAME_DIR.. "src/lib/formats/fs_oric_jasmin.cpp",
 		MAME_DIR.. "src/lib/formats/fs_oric_jasmin.h",
+	}
+end
+
+--------------------------------------------------
+--
+--@src/lib/formats/fs_cbmdos.h,FORMATS["FS_CBMDOS"] = true
+--------------------------------------------------
+
+if opt_tool(FORMATS, "FS_CBMDOS") then
+	files {
+		MAME_DIR.. "src/lib/formats/fs_cbmdos.cpp",
+		MAME_DIR.. "src/lib/formats/fs_cbmdos.h",
+	}
+end
+
+--------------------------------------------------
+--
+--@src/lib/formats/fs_coco_rsdos.h,FORMATS["FS_COCO_RSDOS"] = true
+--------------------------------------------------
+
+if opt_tool(FORMATS, "FS_COCO_RSDOS") then
+	files {
+		MAME_DIR.. "src/lib/formats/fs_coco_rsdos.cpp",
+		MAME_DIR.. "src/lib/formats/fs_coco_rsdos.h",
+	}
+end
+
+--------------------------------------------------
+--
+--@src/lib/formats/fs_coco_os9.h,FORMATS["FS_COCO_OS9"] = true
+--------------------------------------------------
+
+if opt_tool(FORMATS, "FS_COCO_OS9") then
+	files {
+		MAME_DIR.. "src/lib/formats/fs_coco_os9.cpp",
+		MAME_DIR.. "src/lib/formats/fs_coco_os9.h",
+	}
+end
+
+--------------------------------------------------
+--
+--@src/lib/formats/fs_isis.h,FORMATS["FS_ISIS"] = true
+--------------------------------------------------
+
+if opt_tool(FORMATS, "FS_ISIS") then
+	files {
+		MAME_DIR.. "src/lib/formats/fs_isis.cpp",
+		MAME_DIR.. "src/lib/formats/fs_isis.h",
 	}
 end
 

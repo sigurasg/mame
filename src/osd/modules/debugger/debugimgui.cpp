@@ -3,9 +3,11 @@
 // ImGui based debugger
 
 #include "emu.h"
+#include "debug_module.h"
+
 #include "imgui/imgui.h"
-#include "render.h"
-#include "uiinput.h"
+
+#include "imagedev/floppy.h"
 
 #include "debug/debugvw.h"
 #include "debug/dvdisasm.h"
@@ -14,14 +16,16 @@
 #include "debug/dvwpoints.h"
 #include "debug/debugcon.h"
 #include "debug/debugcpu.h"
+#include "debugger.h"
+#include "render.h"
+#include "uiinput.h"
 
 #include "config.h"
-#include "debugger.h"
 #include "modules/lib/osdobj_common.h"
-#include "debug_module.h"
 #include "modules/osdmodule.h"
 #include "zippath.h"
-#include "imagedev/floppy.h"
+
+namespace {
 
 class debug_area
 {
@@ -142,7 +146,7 @@ private:
 
 	struct image_type_entry
 	{
-		floppy_image_format_t* format;
+		const floppy_image_format_t* format;
 		std::string shortname;
 		std::string longname;
 	};
@@ -987,9 +991,9 @@ void debug_imgui::create_image()
 {
 	image_init_result res;
 
-	if(m_dialog_image->image_type() == IO_FLOPPY)
+	auto *fd = dynamic_cast<floppy_image_device *>(m_dialog_image);
+	if(fd != nullptr)
 	{
-		auto *fd = static_cast<floppy_image_device *>(m_dialog_image);
 		res = fd->create(m_path,nullptr,nullptr);
 		if(res == image_init_result::PASS)
 			fd->setup_write(m_typelist.at(m_format_sel).format);
@@ -1013,7 +1017,6 @@ void debug_imgui::refresh_filelist()
 	std::error_condition const err = util::zippath_directory::open(m_path,dir);
 	if(!err)
 	{
-		int x = 0;
 		// add drives
 		for(std::string const &volume_name : osd_get_volume_names())
 		{
@@ -1022,7 +1025,6 @@ void debug_imgui::refresh_filelist()
 			temp.basename = volume_name;
 			temp.fullpath = volume_name;
 			m_filelist.emplace_back(std::move(temp));
-			x++;
 		}
 		first = m_filelist.size();
 		const osd::directory::entry *dirent;
@@ -1061,7 +1063,7 @@ void debug_imgui::refresh_typelist()
 	if(fd == nullptr)
 		return;
 
-	for(floppy_image_format_t* flist : fd->get_formats())
+	for(const floppy_image_format_t* flist : fd->get_formats())
 	{
 		if(flist->supports_save())
 		{
@@ -1199,7 +1201,8 @@ void debug_imgui::draw_create_dialog(const char* label)
 		}
 
 		// format combo box for floppy devices
-		if(m_dialog_image->image_type() == IO_FLOPPY)
+		auto *fd = dynamic_cast<floppy_image_device *>(m_dialog_image);
+		if(fd != nullptr)
 		{
 			std::string combo_str;
 			combo_str.clear();
@@ -1392,7 +1395,6 @@ void debug_imgui::update()
 	//debug_area* view_ptr = view_list;
 	std::vector<debug_area*>::iterator view_ptr;
 	bool opened;
-	int count = 0;
 	ImGui::PushStyleColor(ImGuiCol_WindowBg,ImVec4(1.0f,1.0f,1.0f,0.9f));
 	ImGui::PushStyleColor(ImGuiCol_Text,ImVec4(0.0f,0.0f,0.0f,1.0f));
 	ImGui::PushStyleColor(ImGuiCol_TextDisabled,ImVec4(0.0f,0.0f,1.0f,1.0f));
@@ -1437,7 +1439,6 @@ void debug_imgui::update()
 			break;
 		}
 		++view_ptr;
-		count++;
 	}
 	// check for a closed window
 	if(to_delete != nullptr)
@@ -1565,5 +1566,7 @@ void debug_imgui::debugger_update()
 		imguiEndFrame();
 	}
 }
+
+} // anonymous namespace
 
 MODULE_DEFINITION(DEBUG_IMGUI, debug_imgui)

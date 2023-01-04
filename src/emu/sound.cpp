@@ -9,21 +9,25 @@
 ***************************************************************************/
 
 #include "emu.h"
-#include "speaker.h"
-#include "emuopts.h"
-#include "osdepend.h"
-#include "config.h"
-#include "wavwrite.h"
 
+#include "config.h"
+#include "emuopts.h"
+#include "speaker.h"
+
+#include "wavwrite.h"
+#include "xmlfile.h"
+
+#include "osdepend.h"
 
 
 //**************************************************************************
 //  DEBUGGING
 //**************************************************************************
 
-#define VERBOSE         (0)
+//#define VERBOSE 1
+#define LOG_OUTPUT_FUNC osd_printf_debug
 
-#define VPRINTF(x)      do { if (VERBOSE) osd_printf_debug x; } while (0)
+#include "logmacro.h"
 
 #define LOG_OUTPUT_WAV  (0)
 
@@ -560,6 +564,7 @@ sound_stream::sound_stream(device_t &device, u32 inputs, u32 outputs, u32 output
 	m_synchronous((flags & STREAM_SYNCHRONOUS) != 0),
 	m_resampling_disabled((flags & STREAM_DISABLE_INPUT_RESAMPLING) != 0),
 	m_sync_timer(nullptr),
+	m_last_update_end_time(attotime::zero),
 	m_input(inputs),
 	m_input_view(inputs),
 	m_empty_buffer(100),
@@ -578,8 +583,10 @@ sound_stream::sound_stream(device_t &device, u32 inputs, u32 outputs, u32 output
 	// create a unique tag for saving
 	std::string state_tag = string_format("%d", m_device.machine().sound().unique_id());
 	auto &save = m_device.machine().save();
-	save.save_item(&m_device, "stream.sample_rate", state_tag.c_str(), 0, NAME(m_sample_rate));
+	save.save_item(&m_device, "stream.sound_stream", state_tag.c_str(), 0, NAME(m_sample_rate));
+	save.save_item(&m_device, "stream.sound_stream", state_tag.c_str(), 0, NAME(m_last_update_end_time));
 	save.register_postload(save_prepost_delegate(FUNC(sound_stream::postload), this));
+	save.register_presave(save_prepost_delegate(FUNC(sound_stream::presave), this));
 
 	// initialize all inputs
 	for (unsigned int inputnum = 0; inputnum < m_input.size(); inputnum++)
@@ -602,7 +609,7 @@ sound_stream::sound_stream(device_t &device, u32 inputs, u32 outputs, u32 output
 
 	// create an update timer for synchronous streams
 	if (synchronous())
-		m_sync_timer = m_device.machine().scheduler().timer_alloc(timer_expired_delegate(FUNC(sound_stream::sync_update), this));
+		m_sync_timer = m_device.timer_alloc(FUNC(sound_stream::sync_update), this);
 
 	// force an update to the sample rates
 	sample_rate_changed();
@@ -648,8 +655,8 @@ void sound_stream::set_sample_rate(u32 new_rate)
 
 void sound_stream::set_input(int index, sound_stream *input_stream, int output_index, float gain)
 {
-	VPRINTF(("stream_set_input(%p, '%s', %d, %p, %d, %f)\n", (void *)this, m_device.tag(),
-			index, (void *)input_stream, output_index, (double) gain));
+	LOG("stream_set_input(%p, '%s', %d, %p, %d, %f)\n", (void *)this, m_device.tag(),
+			index, (void *)input_stream, output_index, gain);
 
 	// make sure it's a valid input
 	if (index >= m_input.size())
@@ -857,12 +864,22 @@ void sound_stream::sample_rate_changed()
 
 void sound_stream::postload()
 {
-	// set the end time of all of our streams to now
+	// set the end time of all of our streams to the value saved in m_last_update_end_time
 	for (auto &output : m_output)
-		output.set_end_time(m_device.machine().time());
+		output.set_end_time(m_last_update_end_time);
 
 	// recompute the sample rate information
 	sample_rate_changed();
+}
+
+//-------------------------------------------------
+//  presave - save/restore callback
+//-------------------------------------------------
+
+void sound_stream::presave()
+{
+	// save the stream end time
+	m_last_update_end_time = m_output[0].end_time();
 }
 
 
@@ -885,7 +902,7 @@ void sound_stream::reprime_sync_timer()
 //  synchronous stream
 //-------------------------------------------------
 
-void sound_stream::sync_update(void *, s32)
+void sound_stream::sync_update(s32)
 {
 	update();
 	reprime_sync_timer();
@@ -1076,18 +1093,10 @@ sound_manager::sound_manager(running_machine &machine) :
 	m_wavfile(),
 	m_first_reset(true)
 {
-	// get filename for WAV file or AVI file if specified
-	const char *wavfile = machine.options().wav_write();
-	const char *avifile = machine.options().avi_write();
-
-	// handle -nosound and lower sample rate if not recording WAV or AVI
-	if (m_nosound_mode && wavfile[0] == 0 && avifile[0] == 0)
-		machine.m_sample_rate = 11025;
-
 	// count the mixers
 #if VERBOSE
 	mixer_interface_enumerator iter(machine.root_device());
-	VPRINTF(("total mixers = %d\n", iter.count()));
+	LOG("total mixers = %d\n", iter.count());
 #endif
 
 	// register callbacks
@@ -1366,6 +1375,10 @@ void sound_manager::config_load(config_type cfg_type, config_level cfg_level, ut
 	if ((cfg_type != config_type::SYSTEM) || !parentnode)
 		return;
 
+	// master volume attenuation
+	if (util::xml::data_node const *node = parentnode->get_child("attenuation"))
+		set_attenuation(std::clamp(int(node->get_attribute_int("value", 0)), -32, 0));
+
 	// iterate over channel nodes
 	for (util::xml::data_node const *channelnode = parentnode->get_child("channel"); channelnode != nullptr; channelnode = channelnode->get_next_sibling("channel"))
 	{
@@ -1391,6 +1404,13 @@ void sound_manager::config_save(config_type cfg_type, util::xml::data_node *pare
 	// we only save system-specific configuration
 	if (cfg_type != config_type::SYSTEM)
 		return;
+
+	// master volume attenuation
+	if (m_attenuation != machine().options().volume())
+	{
+		if (util::xml::data_node *const node = parentnode->add_child("attenuation", nullptr))
+			node->set_attribute_int("value", m_attenuation);
+	}
 
 	// iterate over mixer channels
 	for (int mixernum = 0; ; mixernum++)
@@ -1457,9 +1477,9 @@ stream_buffer::sample_t sound_manager::adjust_toward_compressor_scale(stream_buf
 //  and send it to the OSD layer
 //-------------------------------------------------
 
-void sound_manager::update(void *ptr, int param)
+void sound_manager::update(int param)
 {
-	VPRINTF(("sound_update\n"));
+	LOG("sound_update\n");
 
 	g_profiler.start(PROFILER_SOUND);
 

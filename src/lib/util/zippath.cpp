@@ -11,6 +11,7 @@
 #include "zippath.h"
 
 #include "corestr.h"
+#include "path.h"
 #include "unzip.h"
 
 #include <algorithm>
@@ -83,7 +84,7 @@ bool is_7z_file(std::string_view path)
 
 bool is_zip_file(std::string_view path)
 {
-	return core_filename_ends_with(path, ".zip");
+	return core_filename_ends_with(path, ".zip") || core_filename_ends_with(path, ".imz");
 }
 
 
@@ -726,7 +727,7 @@ std::error_condition zippath_fopen(std::string_view filename, uint32_t openflags
 		}
 
 		if (subpath.empty())
-			filerr = util::core_file::open(std::string(filename), openflags, file);
+			filerr = util::core_file::open(filename, openflags, file);
 		else
 			filerr = std::errc::no_such_file_or_directory;
 
