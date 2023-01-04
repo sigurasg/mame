@@ -33,7 +33,7 @@ public:
 
 private:
 	void debug_init();
-	void debug_commands(const std::vector<std::string> &params);
+	void debug_commands(const std::vector<std::string_view> &params);
 
 	void device_start() override;
 
@@ -106,7 +106,7 @@ private:
 	// Returns a one-bit value from this multiplexer.
 	uint8_t u2456_r();
 
-	void device_timer(emu_timer &timer, device_timer_id id, int param, void *ptr) override;
+	TIMER_CALLBACK_MEMBER(device_timer);
 
 	// Temporarily displays the OSD only.
 	u32 screen_update(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &rect);
@@ -213,7 +213,7 @@ void tek2465_state::debug_init() {
 	}
 }
 
-void tek2465_state::debug_commands(const std::vector<std::string> &params) {
+void tek2465_state::debug_commands(const std::vector<std::string_view> &params) {
 	debugger_console &con = machine().debugger().console();
 
 	con.printf("PORT1: 0x%02X\n", m_port_1);
@@ -306,7 +306,7 @@ void tek2465_state::device_start() {
 	save_item(NAME(m_dly_ref_0));
 	save_item(NAME(m_dly_ref_1));
 
-	m_irq_timer = timer_alloc(IRQ_TIMER);
+	m_irq_timer = timer_alloc(FUNC(tek2465_state::device_timer), this);
 	// TODO(siggi): Does the counter start at an arbitrary count?
 	m_irq_timer->adjust(attotime::from_usec(3300));
 }
@@ -595,9 +595,8 @@ uint8_t tek2465_state::u2456_r() {
 	return BIT(value, BIT(m_dac.w, 12, 3));
 }
 
-void tek2465_state::device_timer(emu_timer &timer, device_timer_id id, int param, void *ptr) {
-	if (id == IRQ_TIMER)
-		m_maincpu->set_input_line(M6800_IRQ_LINE, ASSERT_LINE);
+TIMER_CALLBACK_MEMBER(tek2465_state::device_timer) {
+	m_maincpu->set_input_line(M6800_IRQ_LINE, ASSERT_LINE);
 }
 
 uint32_t tek2465_state::screen_update(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &rect) {
