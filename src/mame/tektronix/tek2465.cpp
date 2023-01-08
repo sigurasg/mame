@@ -193,7 +193,7 @@ void tek2465_state::tek2465(machine_config& config) {
 
 	SCREEN(config, m_screen, SCREEN_TYPE_RASTER);
 	m_screen->set_refresh_hz(50);
-	m_screen->set_size(32 * 8, 16 * 2);
+	m_screen->set_size(320, 256);
 	m_screen->set_visarea_full();
 	m_screen->set_screen_update(FUNC(tek2465_state::screen_update));
 
@@ -604,6 +604,11 @@ uint32_t tek2465_state::screen_update(screen_device &screen, bitmap_ind16 &bitma
 	//    nice. The updates should probably also be timed to the ROS
 	//    counter that also does the IRQs.
 	bitmap.fill(0);
+	// Where to start the OSD in X.
+	constexpr int32_t col_offs = (320 - 256) / 2;
+	// Where to start each OSD row in Y. Note that the OSD is encoded from bottom to top
+	// while the bitmap is top to bottom.
+	constexpr int32_t row_offs[2] = { 256, 32};
 	for (size_t row = 0; row < 2; ++row) {
 		for (size_t col = 0; col < 32; ++col) {
 			uint8_t value = m_ros_ram[row * 32 + col];
@@ -611,9 +616,9 @@ uint32_t tek2465_state::screen_update(screen_device &screen, bitmap_ind16 &bitma
 
 			while (*pixel & 0x80) {
 				++pixel;
-				int32_t x = col * 8 + (*pixel & 0x07);
+				int32_t x = col_offs + col * 8 + (*pixel & 0x07);
 				// Flip the image vertically.
-				int32_t y = 32 - (row * 16 + ((*pixel & 0x7F) >> 3));
+				int32_t y = row_offs[row] - (row * 16 + ((*pixel & 0x7F) >> 3));
 
 				bitmap.pix(y, x) = 1;
 			}
