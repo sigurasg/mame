@@ -8,7 +8,14 @@ license:CC0
         <disk state="1"><color red="1.0" green="0.18" blue="0.20" /></disk>
     </element>
 
-    <element name="CH1_CPL_UP">
+    <element name="Background">
+        <rect>
+                <color red="1.0" green="1.0" blue="1.0" />
+        </rect>
+        <image file="2465.svg" />
+    </element>
+
+    <element name="CPL_UP">
         <rect state="0"><bounds x="0.0" y="0.0" width="1.0" height="1.0" /><color red="0.2" green="0.2" blue="0.2" /></rect>
         <rect state="1"><bounds x="0.0" y="0.0" width="1.0" height="1.0" /><color red="0.1" green="0.1" blue="0.1" /></rect>
         <rect state="0"><bounds x="0.1" y="0.1" width="0.9" height="0.9" /><color red="0.1" green="0.1" blue="0.1" /></rect>
@@ -16,7 +23,7 @@ license:CC0
         <rect><bounds x="0.1" y="0.1" width="0.8" height="0.8" /><color red="0.15" green="0.15" blue="0.15" /></rect>
         <text string="UP"><bounds x="0.1" y="0.4" width="0.8" height="0.2" /><color red="1.0" green="1.0" blue="1.0" /></text>
     </element>
-    <element name="CH1_CPL_DN">
+    <element name="CPL_DN">
         <rect state="0"><bounds x="0.0" y="0.0" width="1.0" height="1.0" /><color red="0.2" green="0.2" blue="0.2" /></rect>
         <rect state="1"><bounds x="0.0" y="0.0" width="1.0" height="1.0" /><color red="0.1" green="0.1" blue="0.1" /></rect>
         <rect state="0"><bounds x="0.1" y="0.1" width="0.9" height="0.9" /><color red="0.1" green="0.1" blue="0.1" /></rect>
@@ -25,10 +32,26 @@ license:CC0
         <text string="DN"><bounds x="0.1" y="0.4" width="0.8" height="0.2" /><color red="1.0" green="1.0" blue="1.0" /></text>
     </element>
 
+    <element name="BUTTON">
+        <rect state="0">
+            <bounds x="0.0" y="0.0" width="1.0" height="1.0" />
+            <color red="1.0" green="1.0" blue="1.0" />
+        </rect>
+        <rect state="1">
+            <bounds x="0.0" y="0.0" width="1.0" height="1.0" />
+            <color red="0.5" green="0.5" blue="0.5" />
+        </rect>
+    </element>
+
     <view name="Front Panel">
+        <element ref="Background">
+            <bounds x="0" y="0" width="489.16086" height="240.4364" />
+        </element>
+
         <screen index="0">
-            <bounds x="0" y="0" width="256" height="32" />
+            <bounds x="36.902576" y="37.86998" width="161.82976" height="129.63997" />
         </screen>
+
         <repeat count="32">
             <param name="count" start="0" increment="1" />
             <param name="x" start="0" increment="4" />
@@ -37,17 +60,81 @@ license:CC0
             </element>
         </repeat>
 
-        <element ref="CH1_CPL_UP" inputtag="ROW0" inputmask="0x10">
+        <element ref="CPL_UP" inputtag="ROW0" inputmask="0x10">
             <bounds x="0" y="64" width="20" height="10" />
         </element>
-        <element ref="CH1_CPL_DN" inputtag="ROW0" inputmask="0x08">
+        <element ref="CPL_DN" inputtag="ROW0" inputmask="0x08">
             <bounds x="0" y="74" width="20" height="10" />
         </element>
 
+        <element ref="CPL_UP" inputtag="ROW1" inputmask="0x10">
+            <bounds x="20" y="64" width="20" height="10" />
+        </element>
+        <element ref="CPL_DN" inputtag="ROW1" inputmask="0x08">
+            <bounds x="20" y="74" width="20" height="10" />
+        </element>
+        <!-- CH_1 -->
+        <element ref="BUTTON" inputtag="ROW6" inputmask="0x01">
+            <bounds x="255.76675" y="50.865398" width="7.4830184" height="7.5130167" />
+        </element>
+        <!-- CH_2 -->
+        <element ref="BUTTON" inputtag="ROW6" inputmask="0x02">
+            <bounds x="271.641754" y="50.865398" width="7.4830184" height="7.5130167" />
+        </element>
+        <!-- CH_3 -->
+        <element ref="BUTTON" inputtag="ROW6" inputmask="0x08">
+            <bounds x="287.516758" y="50.865398" width="7.4830184" height="7.5130167" />
+        </element>
+        <!-- CH_4 -->
+        <element ref="BUTTON" inputtag="ROW6" inputmask="0x10">
+            <bounds x="303.39176199999997" y="50.865398" width="7.4830184" height="7.5130167" />
+        </element>
+
+        <!-- DELTA_V -->
+        <element ref="BUTTON" inputtag="ROW8" inputmask="0x08">
+            <bounds x="344.66679999999997" y="50.865398" width="7.4830184" height="7.5130167" />
+        </element>
+        <!-- DELTA_T -->
+        <element ref="BUTTON" inputtag="ROW8" inputmask="0x04">
+            <bounds x="360.54184" y="50.865398" width="7.4830184" height="7.5130167" />
+        </element>
+        <!-- TRACKING -->
+        <element ref="BUTTON" inputtag="ROW8" inputmask="0x02">
+            <bounds x="376.41694" y="50.865398" width="7.4830184" height="7.5130167" />
+        </element>
+
+        <!-- A_B_TRIG -->
+        <element ref="BUTTON" inputtag="ROW9" inputmask="0x10">
+            <bounds x="402.87544" y="50.865398" width="7.4830184" height="7.5130167" />
+        </element>
+
+        <!-- SLOPE -->
+        <element ref="BUTTON" inputtag="ROW8" inputmask="0x10">
+            <bounds x="451.02991" y="50.865398" width="7.4830184" height="7.5130167" />
+        </element>
+
+
+        <!-- ADD -->
+        <element ref="BUTTON" inputtag="ROW6" inputmask="0x04">
+            <bounds x="255.76675" y="75.207074" width="7.4830184" height="7.5130167" />
+        </element>
+        <!-- INVERT -->
+        <element ref="BUTTON" inputtag="ROW2" inputmask="0x10">
+            <bounds x="271.641754" y="75.207074" width="7.4830184" height="7.5130167" />
+        </element>
+        <!-- CHOP -->
+        <element ref="BUTTON" inputtag="ROW7" inputmask="0x08">
+            <bounds x="287.516758" y="75.207074" width="7.4830184" height="7.5130167" />
+        </element>
+        <!-- 20_MHZ_BW_LIMIT -->
+        <element ref="BUTTON" inputtag="ROW7" inputmask="0x10">
+            <bounds x="303.39176199999997" y="75.207074" width="7.4830184" height="7.5130167" />
+        </element>
+
+>
 <!--
     TODO(siggi): Hookup front panel LEDs.
     TODO(siggi): Hookup a reset/power switch.
-    TODO(siggi): Hookup a readout screen.    
 -->
     </view>
 </mamelayout>
