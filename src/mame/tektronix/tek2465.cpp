@@ -11,7 +11,6 @@
 #include "cpu/m6800/m6800.h"
 #include "machine/er1400.h"
 
-#include "emupal.h"
 #include "screen.h"
 
 #include "debug/debugcon.h"
@@ -23,6 +22,7 @@
 #define VERBOSE 1
 #include "logmacro.h"
 
+namespace {
 
 class tek2465_state : public driver_device
 {
@@ -35,9 +35,9 @@ private:
 	void debug_init();
 	void debug_commands(const std::vector<std::string_view> &params);
 
-	void device_start() override;
+	void machine_start() override;
 
-	enum IOPort {
+	enum ioport_type {
 		UNUSED,
 		DAC_MSB_CLK,
 		DAC_LSB_CLK,
@@ -64,38 +64,36 @@ private:
 
 	void tek2465_map(address_map& map);
 
-	static IOPort get_io_port(offs_t offset);
-	static const char* get_io_port_name(IOPort io_port);
-
-	// IO port accesses.
-	// Some addresses don't care whether the MPU reads or writes them,
-	// returns true if the access was handled.
-	bool io_access(IOPort io_port);
-	void io_write(offs_t offset, uint8_t data);
-	uint8_t io_read(offs_t offset);
-
 	// Read/write/access IO ports.
 	void dac_msb_w(uint8_t data);
 	void dac_lsb_w(uint8_t data);
 	void port_1_w(uint8_t data);
-	void ros_1_a();
+	void port_2_w(uint8_t data);
+	uint8_t ros_1_r();
 	void ros_1_w(uint8_t data);
 	void ros_2_w(uint8_t data);
-	void dmux_0_off_a();
-	void dmux_0_on_a();
+	uint8_t dmux_0_off_r();
+	void dmux_0_off_w(uint8_t data);
+	uint8_t dmux_0_on_r();
+	void dmux_0_on_w(uint8_t data);
 	uint8_t port3_r();
-	void dmux_1_off_a();
-	void dmux_1_on_a();
-	void led_a();
-	void disp_seq_a();
-	void attn_a();
-	void ch2_pa_a();
-	void ch1_pa_a();
-	void b_swp_a();
-	void a_swp_a();
-	void b_trig_a();
-	void a_trig_a();
-	void trig_stat_strb_a();
+	uint8_t dmux_1_off_r();
+	void dmux_1_off_w(uint8_t data);
+	uint8_t dmux_1_on_r();
+	void dmux_1_on_w(uint8_t data);
+	uint8_t led_r();
+	void led_w(uint8_t data);
+	uint8_t disp_seq_r();
+	void disp_seq_w(uint8_t data);
+
+	uint8_t attn_r();
+	uint8_t ch2_pa_r();
+	uint8_t ch1_pa_r();
+	uint8_t b_swp_r();
+	uint8_t a_swp_r();
+	uint8_t b_trig_r();
+	uint8_t a_trig_r();
+	uint8_t trig_stat_strb_r();
 
 	void dmux_0_update_dac();
 
@@ -105,7 +103,7 @@ private:
 	TIMER_CALLBACK_MEMBER(device_timer);
 
 	// Temporarily displays the OSD only.
-	u32 screen_update(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &rect);
+	uint32_t screen_update(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &rect);
 
 	required_device<cpu_device> m_maincpu;
 	required_device<er1400_device> m_earom;
@@ -155,7 +153,6 @@ private:
 
 	// Temporary to display the OSD only.
 	required_device<screen_device> m_screen;
-	required_device<palette_device> m_palette;
 
 	//////////////////////////////////////////////////////////////////////
 	// Front panel scanning.
@@ -182,11 +179,11 @@ tek2465_state::tek2465_state(const machine_config& config, device_type type, con
 	m_front_panel_led_outputs(*this, "FP_LED%u", 0U),
 	m_character_rom(*this, "character_rom"),
 	m_screen(*this, "screen"),
-	m_palette(*this, "palette"),
 	m_front_panel_rows(*this, "ROW%u", 0) {
 }
 
-void tek2465_state::tek2465(machine_config& config) {
+void tek2465_state::tek2465(machine_config& config)
+{
 	M6808(config, m_maincpu, 5_MHz_XTAL);
 	ER1400(config, m_earom, 5_MHz_XTAL);
 	m_maincpu->set_addrmap(AS_PROGRAM, &tek2465_state::tek2465_map);
@@ -196,12 +193,10 @@ void tek2465_state::tek2465(machine_config& config) {
 	m_screen->set_size(320, 256);
 	m_screen->set_visarea_full();
 	m_screen->set_screen_update(FUNC(tek2465_state::screen_update));
-
-	PALETTE(config, m_palette, palette_device::MONOCHROME);
-	m_screen->set_palette(m_palette);
 }
 
-void tek2465_state::debug_init() {
+void tek2465_state::debug_init()
+{
 	if (machine().debug_flags & DEBUG_FLAG_ENABLED)
 	{
 		using namespace std::placeholders;
@@ -209,7 +204,8 @@ void tek2465_state::debug_init() {
 	}
 }
 
-void tek2465_state::debug_commands(const std::vector<std::string_view> &params) {
+void tek2465_state::debug_commands(const std::vector<std::string_view> &params)
+{
 	debugger_console &con = machine().debugger().console();
 
 	con.printf("PORT1: 0x%02X\n", m_port_1);
@@ -275,7 +271,7 @@ static const char* fp_led_names[] = {
 	con.printf("Next IRQ: %ss\n", m_irq_timer->remaining().to_string().c_str());
 }
 
-void tek2465_state::device_start() {
+void tek2465_state::machine_start() {
 	debug_init();
 
 	m_front_panel_led_outputs.resolve();
@@ -308,108 +304,62 @@ void tek2465_state::device_start() {
 }
 
 void tek2465_state::tek2465_map(address_map& map) {
-	 // 2K RAM on the 2465.
+	// 2K RAM on the 2465.
 	map(0x0000, 0x07FF).ram();
 
 	// IO Registers.
-	map(0x0800, 0x09FF).rw(FUNC(tek2465_state::io_read), FUNC(tek2465_state::io_write)).mirror(0x600);
+	// UNUSED.
+	map(0x0800, 0x083f).mirror(0x600).unmaprw();
+	// DAC_MSB_CLK
+	map(0x0840, 0x087f).mirror(0x600).w(FUNC(tek2465_state::dac_msb_w));
+	// DAC_LSB_CLK
+	map(0x0880, 0x08BF).mirror(0x600).w(FUNC(tek2465_state::dac_lsb_w));
+	// PORT_1_CLK
+	map(0x08C0, 0x08FF).mirror(0x600).w(FUNC(tek2465_state::port_1_w));
+	// ROS_1_CLK
+	map(0x0900, 0x0935).mirror(0x600).rw(FUNC(tek2465_state::ros_1_r), FUNC(tek2465_state::ros_1_w));
+	// ROS_2_CLK
+	map(0x0940, 0x097f).mirror(0x600).w(FUNC(tek2465_state::ros_2_w));
+	// PORT2_CLK
+	map(0x0980, 0x09BF).mirror(0x600).w(FUNC(tek2465_state::port_2_w));
+
+	// UNUSED
+	map(0x09c0, 0x09c0).mirror(0x600).unmaprw();
+	// DMUX0_OFF
+	map(0x09c1, 0x09c1).mirror(0x600).rw(FUNC(tek2465_state::dmux_0_off_r), FUNC(tek2465_state::dmux_0_off_w));
+	// DMUX0_ON
+	map(0x09c2, 0x09c2).mirror(0x600).rw(FUNC(tek2465_state::dmux_0_on_r), FUNC(tek2465_state::dmux_0_on_w));
+	// PORT_3_IN
+	map(0x09c3, 0x09c3).mirror(0x600).r(FUNC(tek2465_state::port3_r));
+	// DMUX1_OFF
+	map(0x09c4, 0x09c4).mirror(0x600).rw(FUNC(tek2465_state::dmux_1_off_r), FUNC(tek2465_state::dmux_1_off_w));
+	// DMUX1_ON
+	map(0x09c5, 0x09c5).mirror(0x600).rw(FUNC(tek2465_state::dmux_1_on_r), FUNC(tek2465_state::dmux_1_on_w));
+	// LED_CLK
+	map(0x09c6, 0x09c6).mirror(0x600).rw(FUNC(tek2465_state::led_r), FUNC(tek2465_state::led_w));
+	// DISP_SEC_CLK
+	map(0x09c7, 0x09c7).mirror(0x600).rw(FUNC(tek2465_state::disp_seq_r), FUNC(tek2465_state::disp_seq_w));
+	// ATTN_CLK
+	map(0x09c8, 0x09c8).mirror(0x600).r(FUNC(tek2465_state::attn_r));
+	// CH_2_PA_CLK
+	map(0x09c9, 0x09c9).mirror(0x600).r(FUNC(tek2465_state::ch2_pa_r));
+	// CH_1_PA_CLK
+	map(0x09cA, 0x09cA).mirror(0x600).r(FUNC(tek2465_state::ch1_pa_r));
+	// B_SWP_CLK
+	map(0x09cB, 0x09cB).mirror(0x600).r(FUNC(tek2465_state::b_swp_r));
+	// A_SWP_CLK
+	map(0x09cC, 0x09cC).mirror(0x600).r(FUNC(tek2465_state::a_swp_r));
+	// B_TRIG_CLK
+	map(0x09cD, 0x09cD).mirror(0x600).r(FUNC(tek2465_state::b_trig_r));
+	// A_TRIG_CLK
+	map(0x09cE, 0x09cE).mirror(0x600).r(FUNC(tek2465_state::a_trig_r));
+	// TRIG_STAT_STRB
+	map(0x09cF, 0x09cF).mirror(0x600).r(FUNC(tek2465_state::trig_stat_strb_r));
 
 	// TODO(siggi): Options from 0x1000-0x7FFF.
 	map(0x1000, 0x7FFF).unmaprw();
 
 	map(0x8000, 0xFFFF).rom().region("maincpu", 0);
-
-	// Unmapped addresses are pinned to the NOP code.
-	// Sadly MAME doesn't allow that, the only undefined
-	// values allowed are 0xFF or 0x00.
-}
-
-bool tek2465_state::io_access(IOPort io_port) {
-	switch (io_port) {
-		case LED_CLK:
-			led_a();
-			break;
-		case DISP_SEQ_CLK:
-			disp_seq_a();
-			break;
-		case DMUX0_OFF:
-			dmux_0_off_a();
-			break;
-		case DMUX0_ON:
-			dmux_0_on_a();
-			break;
-		case DMUX1_OFF:
-			dmux_1_off_a();
-			break;
-		case DMUX1_ON:
-			dmux_1_on_a();
-			break;
-
-		default:
-			return false;
-	}
-
-	return true;
-}
-
-void tek2465_state::io_write(offs_t offset, uint8_t data) {
-	IOPort io_port = get_io_port(offset);
-	if (io_access(io_port))
-		return;
-
-	switch (io_port) {
-		case PORT_1_CLK:
-			port_1_w(data);
-			break;
-
-		case PORT_2_CLK:
-			m_port_2 = data & 0x3F;
-			break;
-
-		case DAC_LSB_CLK:
-			dac_lsb_w(data);
-			break;
-
-		case DAC_MSB_CLK:
-			dac_msb_w(data);
-			break;
-
-		case ROS_1_CLK:
-			ros_1_w(data);
-			break;
-
-		case ROS_2_CLK:
-			ros_2_w(data);
-			break;
-
-		default:
-			break;
-	}
-
-	LOG("Write 0x%02x to %s(0x%04X)\n", data, get_io_port_name(io_port), offset + 0x0800);
-}
-
-uint8_t tek2465_state::io_read(offs_t offset) {
-	IOPort io_port = get_io_port(offset);
-	if (io_access(io_port))
-		return 0x01;
-
-	uint8_t read_value = 0x01;
-	switch (io_port) {
-		case PORT_3_IN:
-			read_value = port3_r();
-			break;
-
-		case ROS_1_CLK:
-			ros_1_a();
-			break;
-
-		default:
-			break;
-	}
-
-	LOG("Read 0x%02X from %s(0x%04X)\n", read_value, get_io_port_name(io_port), offset + 0x0800);
-	return read_value;
 }
 
 void tek2465_state::dac_msb_w(uint8_t data) {
@@ -449,9 +399,14 @@ void tek2465_state::port_1_w(uint8_t data) {
 	m_earom->data_w(BIT(data, 4));
 }
 
-void tek2465_state::ros_1_a() {
+void tek2465_state::port_2_w(uint8_t data) {
+	m_port_2 = data & 0x3F;
+}
+
+uint8_t tek2465_state::ros_1_r() {
 	// A ROS1 read is used to latch ROS2 shift to output.
 	ros_1_w(0x01);
+	return 0x01;
 }
 
 void tek2465_state::ros_1_w(uint8_t data) {
@@ -485,13 +440,24 @@ void tek2465_state::ros_2_w(uint8_t data) {
 	}
 }
 
-void tek2465_state::dmux_0_off_a() {
+uint8_t tek2465_state::dmux_0_off_r() {
 	m_mux_0_disable = true;
+	return 0x01;
 }
-void tek2465_state::dmux_0_on_a() {
+
+void tek2465_state::dmux_0_off_w(uint8_t data) {
+	dmux_0_off_r();
+}
+
+uint8_t tek2465_state::dmux_0_on_r() {
 	m_mux_0_disable = false;
 
 	dmux_0_update_dac();
+	return 0x01;
+}
+
+void tek2465_state::dmux_0_on_w(uint8_t data) {
+	dmux_0_on_r();
 }
 
 uint8_t tek2465_state::port3_r() {
@@ -514,35 +480,57 @@ uint8_t tek2465_state::port3_r() {
 	return ret;
 }
 
-void tek2465_state::dmux_1_off_a() {
+uint8_t tek2465_state::dmux_1_off_r() {
 	m_mux_1_disable = true;
-}
-void tek2465_state::dmux_1_on_a() {
-	m_mux_1_disable = false;
+	return 0x01;
 }
 
-void tek2465_state::led_a() {
+void tek2465_state::dmux_1_off_w(uint8_t data) {
+	dmux_1_off_r();
+}
+
+uint8_t tek2465_state::dmux_1_on_r() {
+	m_mux_1_disable = false;
+	return 0x01;
+}
+
+void tek2465_state::dmux_1_on_w(uint8_t data) {
+	dmux_0_on_r();
+}
+
+uint8_t tek2465_state::led_r() {
 	m_front_panel_leds <<= 1;
 	m_front_panel_leds |= BIT(m_port_2, 0);
 
 	// Set the LED outputs.
 	for (size_t i = 0; i < 32; ++i)
 		m_front_panel_led_outputs[i] = !BIT(m_front_panel_leds, i);
+
+	return 0x01;
 }
 
-void tek2465_state::disp_seq_a() {
+void tek2465_state::led_w(uint8_t data) {
+	led_r();
+}
+
+uint8_t tek2465_state::disp_seq_r() {
 	m_ds_shift >>= 1;
 	m_ds_shift |= static_cast<uint64_t>(BIT(m_port_2, 0)) << 55;
+	return 0x01;
 }
 
-void tek2465_state::attn_a() {}
-void tek2465_state::ch2_pa_a() {}
-void tek2465_state::ch1_pa_a() {}
-void tek2465_state::b_swp_a() {}
-void tek2465_state::a_swp_a() {}
-void tek2465_state::b_trig_a() {}
-void tek2465_state::a_trig_a() {}
-void tek2465_state::trig_stat_strb_a() {}
+void tek2465_state::disp_seq_w(uint8_t data) {
+	disp_seq_r();
+}
+
+uint8_t tek2465_state::attn_r() { return 0x01; }
+uint8_t tek2465_state::ch2_pa_r() { return 0x01; }
+uint8_t tek2465_state::ch1_pa_r() { return 0x01; }
+uint8_t tek2465_state::b_swp_r() { return 0x01; }
+uint8_t tek2465_state::a_swp_r() { return 0x01; }
+uint8_t tek2465_state::b_trig_r() { return 0x01; }
+uint8_t tek2465_state::a_trig_r() { return 0x01; }
+uint8_t tek2465_state::trig_stat_strb_r() { return 0x01; }
 
 void tek2465_state::dmux_0_update_dac() {
 	if (m_mux_0_disable)
@@ -595,7 +583,7 @@ TIMER_CALLBACK_MEMBER(tek2465_state::device_timer) {
 	m_maincpu->set_input_line(M6800_IRQ_LINE, ASSERT_LINE);
 }
 
-uint32_t tek2465_state::screen_update(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &rect) {
+uint32_t tek2465_state::screen_update(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &rect) {
 	// TODO(siggi): This is pretty hokey, but will do for rendering
 	//    the OSD. This needs to read the ROS2 state flags to know
 	//    whether to even render. Rendering in green with the set OSD
@@ -604,6 +592,9 @@ uint32_t tek2465_state::screen_update(screen_device &screen, bitmap_ind16 &bitma
 	//    nice. The updates should probably also be timed to the ROS
 	//    counter that also does the IRQs.
 	bitmap.fill(0);
+
+	const rgb_t green(0x00, 0xff, 0x00);
+
 	// Where to start the OSD in X.
 	constexpr int32_t col_offs = (320 - 256) / 2;
 	// Where to start each OSD row in Y. Note that the OSD is encoded from bottom to top
@@ -620,90 +611,14 @@ uint32_t tek2465_state::screen_update(screen_device &screen, bitmap_ind16 &bitma
 				// Flip the image vertically.
 				int32_t y = row_offs[row] - (row * 16 + ((*pixel & 0x7F) >> 3));
 
-				bitmap.pix(y, x) = 1;
+				bitmap.pix(y, x) = green;
 			}
 		}
 	}
 	return 0;
 }
 
-// static
-const char* tek2465_state::get_io_port_name(IOPort io_port) {
-	switch (io_port) {
-		case UNUSED: return "UNUSED";
-		case DAC_MSB_CLK: return "DAC_MSB_CLK";
-		case DAC_LSB_CLK: return "DAC_LSB_CLK";
-		case PORT_1_CLK: return "PORT_1_CLK";
-		case ROS_1_CLK: return "ROS_1_CLK";
-		case ROS_2_CLK: return "ROS_2_CLK";
-		case PORT_2_CLK: return "PORT_2_CLK";
-		case DMUX0_OFF: return "DMUX0_OFF";
-		case DMUX0_ON: return "DMUX0_ON";
-		case PORT_3_IN: return "PORT_3_IN";
-		case DMUX1_OFF: return "DMUX1_OFF";
-		case DMUX1_ON: return "DMUX1_ON";
-		case LED_CLK: return "LED_CLK";
-		case DISP_SEQ_CLK: return "DISP_SEQ_CLK";
-		case ATTN_CLK: return "ATTN_CLK";
-		case CH2_PA_CLK: return "CH2_PA_CLK";
-		case CH1_PA_CLK: return "CH1_PA_CLK";
-		case B_SWP_CLK: return "B_SWP_CLK";
-		case A_SWP_CLK: return "A_SWP_CLK";
-		case B_TRIG_CLK: return "B_TRIG_CLK";
-		case A_TRIG_CLK: return "A_TRIG_CLK";
-		case TRIG_STAT_STRB: return "TRIG_STAT_STRB";
-	}
-}
-
-// static
-tek2465_state::IOPort tek2465_state::get_io_port(offs_t offset) {
-	switch (offset >> 6) {
-		case 0: return UNUSED;
-		case 1: return DAC_MSB_CLK;
-		case 2: return DAC_LSB_CLK;
-		case 3: return PORT_1_CLK;
-		case 4: return ROS_1_CLK;
-		case 5: return ROS_2_CLK;
-		case 6: return PORT_2_CLK;
-		case 7:
-			switch (offset & 0xF) {
-				case 0: return UNUSED;
-				case 1: return DMUX0_OFF;
-				case 2: return DMUX0_ON;
-				case 3: return PORT_3_IN;
-				case 4: return DMUX1_OFF;
-				case 5: return DMUX1_ON;
-				case 6: return LED_CLK;
-				case 7: return DISP_SEQ_CLK;
-				case 8: return ATTN_CLK;
-				case 9: return CH2_PA_CLK;
-				case 10: return CH1_PA_CLK;
-				case 11: return B_SWP_CLK;
-				case 12: return A_SWP_CLK;
-				case 13: return B_TRIG_CLK;
-				case 14: return A_TRIG_CLK;
-				case 15: return TRIG_STAT_STRB;
-			}
-		default: return UNUSED;
-	}
-}
-
-ROM_START(tek2465)
-	ROM_REGION(0x10000,"maincpu",0)
-	ROM_LOAD("160-1628-11.bin", 0x0000, 0x2000, CRC(0301c422))
-	ROM_LOAD("160-1627-11.bin", 0x2000, 0x2000, CRC(e6707bf1))
-	ROM_LOAD("160-1626-11.bin", 0x4000, 0x2000, CRC(f976700f))
-	ROM_LOAD("160-1625-11.bin", 0x6000, 0x2000, CRC(187bfa89))
-	// Default EAROM contents.
-	// TODO(siggi): Find valid EAROM contents.
-	ROM_REGION16_BE(200, "earom", 0)
-	ROM_LOAD16_WORD("earom.bin", 0, 200, CRC(4d8fbff7))
-
-	ROM_REGION(0x2000, "character_rom", 0)
-	ROM_LOAD("160-1631-02.bin", 0, 0x1000, CRC(a3da922b))
-ROM_END
-
-const static ioport_value kSecDivTable[26] = {
+const static ioport_value SEC_DIV_REMAP_TABLE[26] = {
 	0x1F,	// X/Y
 	0x1E,	// .5s/DIV
 	0x1C,	// .2s/DIV
@@ -732,7 +647,7 @@ const static ioport_value kSecDivTable[26] = {
 	0x0A,	// 5ns/DIV
 };
 
-const static ioport_value kVoltsDivTable[11] = {
+const static ioport_value VOLTS_DIV_REMAP_TABLE[11] = {
 	0x0F,	// 5V/DIV
 	0x0E,	// 2V/DIV
 	0x0C,	// 1V/DIV
@@ -764,7 +679,7 @@ INPUT_PORTS_START(tek2465)
 
 	PORT_START("ROW2")
 	PORT_BIT( 0x0F, IP_ACTIVE_LOW, IPT_PORT) PORT_NAME("CH1_VOLTS_DIV")
-		PORT_POSITIONS(11) PORT_REMAP_TABLE(kVoltsDivTable) PORT_KEYDELTA(1)
+		PORT_POSITIONS(11) PORT_REMAP_TABLE(VOLTS_DIV_REMAP_TABLE) PORT_KEYDELTA(1)
 		PORT_SENSITIVITY(10)
 		PORT_CODE_INC(KEYCODE_Q) PORT_CODE_DEC(KEYCODE_A)
 
@@ -772,7 +687,7 @@ INPUT_PORTS_START(tek2465)
 
 	PORT_START("ROW3")
 	PORT_BIT( 0x0F, IP_ACTIVE_LOW, IPT_POSITIONAL) PORT_NAME("CH2_VOLTS_DIV")
-		PORT_POSITIONS(11) PORT_REMAP_TABLE(kVoltsDivTable) PORT_KEYDELTA(1)
+		PORT_POSITIONS(11) PORT_REMAP_TABLE(VOLTS_DIV_REMAP_TABLE) PORT_KEYDELTA(1)
 		PORT_SENSITIVITY(10)
 
 	PORT_BIT( 0x10, IP_ACTIVE_LOW, IPT_KEYPAD) PORT_NAME("PULL_ALT_PUSH_B") PORT_TOGGLE
@@ -781,14 +696,14 @@ INPUT_PORTS_START(tek2465)
 	// A sweep speed. This is gray-code encoded.
 	PORT_BIT( 0x1F, 0, IPT_POSITIONAL)
 		PORT_NAME("A_SEC_DIV") PORT_POSITIONS(26)
-		PORT_REMAP_TABLE(kSecDivTable) PORT_KEYDELTA(1) PORT_SENSITIVITY(10)
+		PORT_REMAP_TABLE(SEC_DIV_REMAP_TABLE) PORT_KEYDELTA(1) PORT_SENSITIVITY(10)
 		PORT_CODE_INC(KEYCODE_E) PORT_CODE_DEC(KEYCODE_D)
 
 	PORT_START("ROW5")
 	// B sweep speed. This is gray-code encoded.
 	PORT_BIT( 0x1F, 0, IPT_POSITIONAL)
 		PORT_NAME("B_SEC_DIV") PORT_POSITIONS(26)
-		PORT_REMAP_TABLE(kSecDivTable) PORT_KEYDELTA(1) PORT_SENSITIVITY(10)
+		PORT_REMAP_TABLE(SEC_DIV_REMAP_TABLE) PORT_KEYDELTA(1) PORT_SENSITIVITY(10)
 
 	PORT_START("ROW6")
 	PORT_BIT( 0x01, IP_ACTIVE_LOW, IPT_KEYPAD ) PORT_NAME("CH_1") PORT_CODE(KEYCODE_1) PORT_TOGGLE
@@ -832,5 +747,22 @@ INPUT_PORTS_START(tek2465)
 	// A5: P503 to enable the NOP kernel test.
 	// A5: P501 CAL/NO CAL jumper.
 INPUT_PORTS_END
+
+ROM_START(tek2465)
+	ROM_REGION(0x10000,"maincpu",0)
+	ROM_LOAD("160-1628-11.bin", 0x0000, 0x2000, CRC(0301c422))
+	ROM_LOAD("160-1627-11.bin", 0x2000, 0x2000, CRC(e6707bf1))
+	ROM_LOAD("160-1626-11.bin", 0x4000, 0x2000, CRC(f976700f))
+	ROM_LOAD("160-1625-11.bin", 0x6000, 0x2000, CRC(187bfa89))
+	// Default EAROM contents.
+	// TODO(siggi): Find valid EAROM contents.
+	ROM_REGION16_BE(200, "earom", 0)
+	ROM_LOAD16_WORD("earom.bin", 0, 200, CRC(4d8fbff7))
+
+	ROM_REGION(0x2000, "character_rom", 0)
+	ROM_LOAD("160-1631-02.bin", 0, 0x1000, CRC(a3da922b))
+ROM_END
+
+}  // namespace
 
 GAMEL(1984, tek2465, 0, tek2465, tek2465, tek2465_state, empty_init, ROT0, "Tektronix", "Tektronix 2465", MACHINE_NO_SOUND, layout_tek2465);
