@@ -2,7 +2,7 @@
 // copyright-holders: Sigurdur Asgeirsson
 /***************************************************************************
 
-	Tektronix 2465 oscilloscope driver.
+    Tektronix 2465 oscilloscope driver.
 
 ****************************************************************************/
 
@@ -647,47 +647,47 @@ uint32_t tek2465_state::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 
 const static ioport_value SEC_DIV_REMAP_TABLE[26] =
 {
-	0x1F,	// X/Y
-	0x1E,	// .5s/DIV
-	0x1C,	// .2s/DIV
-	0x1D,	// .1s/DIV
-	0x19,	// 50ms/DIV
-	0x18,	// 20ms/DIV
-	0x1A,	// 10ms/DIV
-	0x1B,	// 5ms/DIV
-	0x13,	// 2ms/DIV
-	0x12,	// 1ms/DIV
-	0x10,	// .5ms/DIV
-	0x11,	// .2ms/DIV
-	0x15,	// .1ms/DIV
-	0x14,	// 50us/DIV
-	0x16,	// 20us/DIV
-	0x17,	// 10us/DIV
-	0x07,	// 5us/DIV
-	0x06,	// 2us/DIV
-	0x04,	// 1us/DIV
-	0x05,	// .5us/DIV
-	0x01,	// .2us/DIV
-	0x00,	// .1us/DIV
-	0x02,	// 50ns/DIV
-	0x03,	// 20ns/DIV
-	0x0B,	// 10ns/DIV
-	0x0A,	// 5ns/DIV
+	0x1F,   // X/Y
+	0x1E,   // .5s/DIV
+	0x1C,   // .2s/DIV
+	0x1D,   // .1s/DIV
+	0x19,   // 50ms/DIV
+	0x18,   // 20ms/DIV
+	0x1A,   // 10ms/DIV
+	0x1B,   // 5ms/DIV
+	0x13,   // 2ms/DIV
+	0x12,   // 1ms/DIV
+	0x10,   // .5ms/DIV
+	0x11,   // .2ms/DIV
+	0x15,   // .1ms/DIV
+	0x14,   // 50us/DIV
+	0x16,   // 20us/DIV
+	0x17,   // 10us/DIV
+	0x07,   // 5us/DIV
+	0x06,   // 2us/DIV
+	0x04,   // 1us/DIV
+	0x05,   // .5us/DIV
+	0x01,   // .2us/DIV
+	0x00,   // .1us/DIV
+	0x02,   // 50ns/DIV
+	0x03,   // 20ns/DIV
+	0x0B,   // 10ns/DIV
+	0x0A,   // 5ns/DIV
 };
 
 const static ioport_value VOLTS_DIV_REMAP_TABLE[11] =
 {
-	0x0F,	// 5V/DIV
-	0x0E,	// 2V/DIV
-	0x0C,	// 1V/DIV
-	0x0D,	// .5V/DIV
-	0x09,	// .2V/DIV
-	0x08,	// .1V/DIV
-	0x0A,	// 50mV/DIV
-	0x0B,	// 20mV/DIV
-	0x03,	// 10mV/DIV
-	0x02,	// 5mV/DIV
-	0x00,	// 2mV/DIV
+	0x0F,   // 5V/DIV
+	0x0E,   // 2V/DIV
+	0x0C,   // 1V/DIV
+	0x0D,   // .5V/DIV
+	0x09,   // .2V/DIV
+	0x08,   // .1V/DIV
+	0x0A,   // 50mV/DIV
+	0x0B,   // 20mV/DIV
+	0x03,   // 10mV/DIV
+	0x02,   // 5mV/DIV
+	0x00,   // 2mV/DIV
 };
 
 INPUT_PORTS_START(tek2465)
