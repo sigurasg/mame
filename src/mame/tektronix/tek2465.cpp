@@ -36,35 +36,15 @@ private:
 	void debug_commands(const std::vector<std::string_view> &params);
 
 	void machine_start() override;
-
-	enum ioport_type {
-		UNUSED,
-		DAC_MSB_CLK,
-		DAC_LSB_CLK,
-		PORT_1_CLK,
-		ROS_1_CLK,
-		ROS_2_CLK,
-		PORT_2_CLK,
-		DMUX0_OFF,
-		DMUX0_ON,
-		PORT_3_IN,
-		DMUX1_OFF,
-		DMUX1_ON,
-		LED_CLK,
-		DISP_SEQ_CLK,
-		ATTN_CLK,
-		CH2_PA_CLK,
-		CH1_PA_CLK,
-		B_SWP_CLK,
-		A_SWP_CLK,
-		B_TRIG_CLK,
-		A_TRIG_CLK,
-		TRIG_STAT_STRB,
-	};
+	void machine_reset() override;
 
 	void tek2465_map(address_map& map);
 
 	// Read/write/access IO ports.
+	// Access to IO ports in this scope is a mixed bag. Only
+	// a few ports actually use the data written, where others
+	// are variously read or written, solely to create a strobe
+	// to shift bits.
 	void dac_msb_w(uint8_t data);
 	void dac_lsb_w(uint8_t data);
 	void port_1_w(uint8_t data);
@@ -179,7 +159,8 @@ tek2465_state::tek2465_state(const machine_config& config, device_type type, con
 	m_front_panel_led_outputs(*this, "FP_LED%u", 0U),
 	m_character_rom(*this, "character_rom"),
 	m_screen(*this, "screen"),
-	m_front_panel_rows(*this, "ROW%u", 0) {
+	m_front_panel_rows(*this, "ROW%u", 0)
+{
 }
 
 void tek2465_state::tek2465(machine_config& config)
@@ -259,7 +240,8 @@ static const char* fp_led_names[] = {
 	"UNUSED2",
 };
 	static_assert(sizeof(fp_led_names)/ sizeof(fp_led_names[0]) == 32);
-	for (size_t i = 0; i < 32; ++i) {
+	for (size_t i = 0; i < 32; ++i)
+	{
 		if (BIT(m_front_panel_leds, i) == 0)
 			con.printf("LED: %s\n", fp_led_names[i]);
 	}
@@ -271,7 +253,8 @@ static const char* fp_led_names[] = {
 	con.printf("Next IRQ: %ss\n", m_irq_timer->remaining().to_string().c_str());
 }
 
-void tek2465_state::machine_start() {
+void tek2465_state::machine_start()
+{
 	debug_init();
 
 	m_front_panel_led_outputs.resolve();
@@ -299,11 +282,19 @@ void tek2465_state::machine_start() {
 	save_item(NAME(m_dly_ref_1));
 
 	m_irq_timer = timer_alloc(FUNC(tek2465_state::device_timer), this);
-	// TODO(siggi): Does the counter start at an arbitrary count?
-	m_irq_timer->adjust(attotime::from_usec(3300));
 }
 
-void tek2465_state::tek2465_map(address_map& map) {
+void tek2465_state::machine_reset()
+{
+	// TODO(siggi): Does the counter start at an arbitrary count?
+	m_irq_timer->adjust(attotime::from_usec(3300));
+
+	// The PORT_1 register is cleared on RESET.
+	m_port_1 = 0u;
+}
+
+void tek2465_state::tek2465_map(address_map& map)
+{
 	// 2K RAM on the 2465.
 	map(0x0000, 0x07FF).ram();
 
@@ -362,12 +353,16 @@ void tek2465_state::tek2465_map(address_map& map) {
 	map(0x8000, 0xFFFF).rom().region("maincpu", 0);
 }
 
-void tek2465_state::dac_msb_w(uint8_t data) {
-	if (BIT(data, 7)) {
+void tek2465_state::dac_msb_w(uint8_t data)
+{
+	if (BIT(data, 7))
+	{
 		// If the bit is high, the timer is reset and the IRQ is cleared.
 		m_irq_timer->reset();
 		m_maincpu->set_input_line(M6800_IRQ_LINE, CLEAR_LINE);
-	} else if (BIT(m_dac.w, 15)) {
+	}
+	else if (BIT(m_dac.w, 15))
+	{
 		// On toggle from high to low, set the timer.
 		// We approximate the frequency to 3.3ms.
 		// TODO(siggi): Make this right.
@@ -383,14 +378,16 @@ void tek2465_state::dac_msb_w(uint8_t data) {
 	dmux_0_update_dac();
 }
 
-void tek2465_state::dac_lsb_w(uint8_t data) {
+void tek2465_state::dac_lsb_w(uint8_t data)
+{
 	m_dac.b.l = data;
 
 	// Update the DMUX sample and hold.
 	dmux_0_update_dac();
 }
 
-void tek2465_state::port_1_w(uint8_t data) {
+void tek2465_state::port_1_w(uint8_t data)
+{
 	m_port_1 = data & 0x3F;
 	m_earom->c1_w(BIT(data, 0));
 	m_earom->c2_w(BIT(data, 1));
@@ -399,17 +396,20 @@ void tek2465_state::port_1_w(uint8_t data) {
 	m_earom->data_w(BIT(data, 4));
 }
 
-void tek2465_state::port_2_w(uint8_t data) {
+void tek2465_state::port_2_w(uint8_t data)
+{
 	m_port_2 = data & 0x3F;
 }
 
-uint8_t tek2465_state::ros_1_r() {
+uint8_t tek2465_state::ros_1_r()
+{
 	// A ROS1 read is used to latch ROS2 shift to output.
 	ros_1_w(0x01);
 	return 0x01;
 }
 
-void tek2465_state::ros_1_w(uint8_t data) {
+void tek2465_state::ros_1_w(uint8_t data)
+{
 	// Any access to the ros_1 register latches
 	// the ros_2 shift register to the output.
 	m_ros_2_latch = m_ros_2_shift;
@@ -418,20 +418,24 @@ void tek2465_state::ros_1_w(uint8_t data) {
 	m_ros_1.w |= BIT(data, 0);
 }
 
-void tek2465_state::ros_2_w(uint8_t data) {
+void tek2465_state::ros_2_w(uint8_t data)
+{
 	m_ros_2_shift <<= 1;
 	m_ros_2_shift |= BIT(data, 0);
 
 	// The shift register address and contents are both
 	// bit-swizzled to the address & data lines.
 	uint8_t address = bitswap(m_ros_1.b.l, 1, 2, 3, 4, 5, 6, 7);
-	if (!BIT(m_ros_2_latch, 2)) {
+	if (!BIT(m_ros_2_latch, 2))
+	{
 		// If bit 2 of the ROS2 register is set, read back the RAM
 		// contents to the upper byte of the ROS1 register.
 		m_ros_1.b.h = bitswap(m_ros_ram[address], 0, 1, 2, 3, 4, 5, 6, 7);
 
 		LOG("ROS read 0x%02X from 0x%02X\n", m_ros_ram[address], address);
-	} else if (!BIT(m_ros_2_latch, 3)) {
+	}
+	else if (!BIT(m_ros_2_latch, 3))
+	{
 		// On a write with the mode set right, write through to the
 		// character RAM.
 		m_ros_ram[address] = bitswap(m_ros_1.b.h, 0, 1, 2, 3, 4, 5, 6, 7);
@@ -440,27 +444,32 @@ void tek2465_state::ros_2_w(uint8_t data) {
 	}
 }
 
-uint8_t tek2465_state::dmux_0_off_r() {
+uint8_t tek2465_state::dmux_0_off_r()
+{
 	m_mux_0_disable = true;
 	return 0x01;
 }
 
-void tek2465_state::dmux_0_off_w(uint8_t data) {
+void tek2465_state::dmux_0_off_w(uint8_t data)
+{
 	dmux_0_off_r();
 }
 
-uint8_t tek2465_state::dmux_0_on_r() {
+uint8_t tek2465_state::dmux_0_on_r()
+{
 	m_mux_0_disable = false;
 
 	dmux_0_update_dac();
 	return 0x01;
 }
 
-void tek2465_state::dmux_0_on_w(uint8_t data) {
+void tek2465_state::dmux_0_on_w(uint8_t data)
+{
 	dmux_0_on_r();
 }
 
-uint8_t tek2465_state::port3_r() {
+uint8_t tek2465_state::port3_r()
+{
 	uint8_t ret = 0;
 
 	ret |= 0x01 << 0; // TODO(siggi): Implement TSO.
@@ -480,25 +489,30 @@ uint8_t tek2465_state::port3_r() {
 	return ret;
 }
 
-uint8_t tek2465_state::dmux_1_off_r() {
+uint8_t tek2465_state::dmux_1_off_r()
+{
 	m_mux_1_disable = true;
 	return 0x01;
 }
 
-void tek2465_state::dmux_1_off_w(uint8_t data) {
+void tek2465_state::dmux_1_off_w(uint8_t data)
+{
 	dmux_1_off_r();
 }
 
-uint8_t tek2465_state::dmux_1_on_r() {
+uint8_t tek2465_state::dmux_1_on_r()
+{
 	m_mux_1_disable = false;
 	return 0x01;
 }
 
-void tek2465_state::dmux_1_on_w(uint8_t data) {
+void tek2465_state::dmux_1_on_w(uint8_t data)
+{
 	dmux_0_on_r();
 }
 
-uint8_t tek2465_state::led_r() {
+uint8_t tek2465_state::led_r()
+{
 	m_front_panel_leds <<= 1;
 	m_front_panel_leds |= BIT(m_port_2, 0);
 
@@ -509,17 +523,20 @@ uint8_t tek2465_state::led_r() {
 	return 0x01;
 }
 
-void tek2465_state::led_w(uint8_t data) {
+void tek2465_state::led_w(uint8_t data)
+{
 	led_r();
 }
 
-uint8_t tek2465_state::disp_seq_r() {
+uint8_t tek2465_state::disp_seq_r()
+{
 	m_ds_shift >>= 1;
 	m_ds_shift |= static_cast<uint64_t>(BIT(m_port_2, 0)) << 55;
 	return 0x01;
 }
 
-void tek2465_state::disp_seq_w(uint8_t data) {
+void tek2465_state::disp_seq_w(uint8_t data)
+{
 	disp_seq_r();
 }
 
@@ -532,12 +549,14 @@ uint8_t tek2465_state::b_trig_r() { return 0x01; }
 uint8_t tek2465_state::a_trig_r() { return 0x01; }
 uint8_t tek2465_state::trig_stat_strb_r() { return 0x01; }
 
-void tek2465_state::dmux_0_update_dac() {
+void tek2465_state::dmux_0_update_dac()
+{
 	if (m_mux_0_disable)
 		return;
 
 	uint16_t value = BIT(m_dac.w, 0, 12);
-	switch (BIT(m_dac.b.h, 4,3)) {
+	switch (BIT(m_dac.b.h, 4,3))
+	{
 		case 0: m_neg_125_v = value; break;
 		case 1: m_a_tim_ref = value; break;
 		case 2: m_b_tim_ref = value; break;
@@ -549,13 +568,16 @@ void tek2465_state::dmux_0_update_dac() {
 	}
 }
 
-uint8_t tek2465_state::u2456_r() {
+uint8_t tek2465_state::u2456_r()
+{
 	// Bit 0x20 is SI, which is grounded on A1.
 	uint8_t value = 0x1F;
 	size_t selected_rows = 0;
-	for (size_t i = 0; i < m_front_panel_rows.size(); ++i) {
+	for (size_t i = 0; i < m_front_panel_rows.size(); ++i)
+	{
 
-		if (!BIT(m_dac.w, i)) {
+		if (!BIT(m_dac.w, i))
+		{
 			++selected_rows;
 			value &= m_front_panel_rows[i]->read();
 
@@ -579,11 +601,13 @@ uint8_t tek2465_state::u2456_r() {
 	return BIT(value, BIT(m_dac.w, 12, 3));
 }
 
-TIMER_CALLBACK_MEMBER(tek2465_state::device_timer) {
+TIMER_CALLBACK_MEMBER(tek2465_state::device_timer)
+{
 	m_maincpu->set_input_line(M6800_IRQ_LINE, ASSERT_LINE);
 }
 
-uint32_t tek2465_state::screen_update(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &rect) {
+uint32_t tek2465_state::screen_update(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &rect)
+{
 	// TODO(siggi): This is pretty hokey, but will do for rendering
 	//    the OSD. This needs to read the ROS2 state flags to know
 	//    whether to even render. Rendering in green with the set OSD
@@ -600,12 +624,15 @@ uint32_t tek2465_state::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 	// Where to start each OSD row in Y. Note that the OSD is encoded from bottom to top
 	// while the bitmap is top to bottom.
 	constexpr int32_t row_offs[2] = { 256, 32};
-	for (size_t row = 0; row < 2; ++row) {
-		for (size_t col = 0; col < 32; ++col) {
+	for (size_t row = 0; row < 2; ++row)
+	{
+		for (size_t col = 0; col < 32; ++col)
+		{
 			uint8_t value = m_ros_ram[row * 32 + col];
 			uint8_t* pixel = m_character_rom->base() + value * 16;
 
-			while (*pixel & 0x80) {
+			while (*pixel & 0x80)
+			{
 				++pixel;
 				int32_t x = col_offs + col * 8 + (*pixel & 0x07);
 				// Flip the image vertically.
@@ -618,7 +645,8 @@ uint32_t tek2465_state::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 	return 0;
 }
 
-const static ioport_value SEC_DIV_REMAP_TABLE[26] = {
+const static ioport_value SEC_DIV_REMAP_TABLE[26] =
+{
 	0x1F,	// X/Y
 	0x1E,	// .5s/DIV
 	0x1C,	// .2s/DIV
@@ -647,7 +675,8 @@ const static ioport_value SEC_DIV_REMAP_TABLE[26] = {
 	0x0A,	// 5ns/DIV
 };
 
-const static ioport_value VOLTS_DIV_REMAP_TABLE[11] = {
+const static ioport_value VOLTS_DIV_REMAP_TABLE[11] =
+{
 	0x0F,	// 5V/DIV
 	0x0E,	// 2V/DIV
 	0x0C,	// 1V/DIV
