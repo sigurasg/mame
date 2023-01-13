@@ -34,17 +34,27 @@
 #define WHITE   15
 
 DEFINE_DEVICE_TYPE(APPLE2_VIDEO, a2_video_device, "a2video", "Apple II video")
+DEFINE_DEVICE_TYPE(APPLE2_VIDEO_COMPOSITE, a2_video_device_composite, "a2video_comp", "Apple II video (composite)")
+DEFINE_DEVICE_TYPE(APPLE2_VIDEO_COMPOSITE_RGB, a2_video_device_composite_rgb, "a2video_comprgb", "Apple II video (composite/RGB)")
 
 //-------------------------------------------------
 //  a2_video_device - constructor
 //-------------------------------------------------
 
-a2_video_device::a2_video_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
-	: device_t(mconfig, APPLE2_VIDEO, tag, owner, clock)
+a2_video_device::a2_video_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, u32 clock)
+	: device_t(mconfig, type, tag, owner, clock)
 	, device_palette_interface(mconfig, *this)
 	, device_video_interface(mconfig, *this)
-{
-}
+	, m_vidconfig(*this, "a2_video_config") {}
+
+a2_video_device::a2_video_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: a2_video_device(mconfig, APPLE2_VIDEO, tag, owner, clock) {}
+
+a2_video_device_composite::a2_video_device_composite(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: a2_video_device(mconfig, APPLE2_VIDEO_COMPOSITE, tag, owner, clock) {}
+
+a2_video_device_composite_rgb::a2_video_device_composite_rgb(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: a2_video_device(mconfig, APPLE2_VIDEO_COMPOSITE_RGB, tag, owner, clock) {}
 
 void a2_video_device::device_start()
 {
@@ -73,15 +83,15 @@ void a2_video_device::device_start()
 
 void a2_video_device::device_reset()
 {
+	// Start in fullscreen hires if there is no character ROM. This is used
+	// by the superga2 and tk2000 drivers, which support no other modes.
+	m_graphics = m_hires = (m_char_ptr == nullptr);
 	m_page2 = false;
-	m_graphics = false;
-	m_hires = false;
 	m_80col = false;
 	m_altcharset = false;
 	m_dhires = false;
 	m_flash = false;
 	m_mix = false;
-	m_sysconfig = 0;
 	m_an2 = false;
 	m_80store = false;
 	m_monohgr = false;
@@ -141,6 +151,69 @@ WRITE_LINE_MEMBER(a2_video_device::an2_w)
 {
 	m_an2 = state;
 }
+
+// 4-bit left rotate. Bits 4-6 of n must be a copy of bits 0-2.
+static inline unsigned rotl4b(unsigned n, unsigned count) { return (n >> (-count & 3)) & 0x0F; }
+// 4-bit left rotate. Bits 4-6 of n must be zero.
+static inline unsigned rotl4(unsigned n, unsigned count) { return rotl4b(n * 0x11, count); }
+
+inline bool a2_video_device::use_page_2() const { return m_page2 && !m_80store; }
+
+inline bool a2_video_device::monochrome_monitor() { return (m_vidconfig.read_safe(0) & 4) != 0; }
+
+inline bool a2_video_device::rgb_monitor() { return (m_vidconfig.read_safe(0) & 7) == 3; }
+
+int a2_video_device::monochrome_hue()
+{
+	switch (m_vidconfig.read_safe(0) & 7)
+	{
+		case 5: return GREEN;
+		case 6: return ORANGE;
+		default: return WHITE;
+	}
+}
+
+// This table implements a colorization scheme defined by one's complement and mirror symmetries
+// and the following rules:
+//
+// Every run of matching pixels gets a single color. For a run of off pixels, if the length is 4
+// or more then the color is black, if the length is 3 then the color is 0001 (appropriately
+// permuted), and if the length is 2 then the color is 1001. If the length is 1 and the 5-pixel
+// group centered on the current pixel is a color (the end bits are equal), then that is the
+// color. That leaves four hard cases which are resolved somewhat arbitrarily as follows:
+// x1[10101], x[1101]00, where x is a don't care bit and the bracketed bits determine the color.
+//
+// As a special case, 0010000 is colored as a permutation of 0001 instead of black (and the
+// counterparts of that rule under the symmetries). This means that runs of dark colors against
+// black and light against white produce 4n-1 pixels instead of 4n-3 (4n would be ideal).
+//
+// A window size of 7 is enough to find the length of the middle pixel's run to a maximum of 4.
+// Each color is duplicated in both nibbles to slightly simplify the 4-bit rotation logic.
+static uint8_t const artifact_color_lut[1<<7] = {
+	0x00,0x00,0x00,0x00,0x88,0x00,0x00,0x00,0x11,0x11,0x55,0x11,0x99,0x99,0xDD,0xFF,
+	0x22,0x22,0x66,0x66,0xAA,0xAA,0xEE,0xEE,0x33,0x33,0x33,0x33,0xBB,0xBB,0xFF,0xFF,
+	0x00,0x00,0x44,0x44,0xCC,0xCC,0xCC,0xCC,0x55,0x55,0x55,0x55,0x99,0x99,0xDD,0xFF,
+	0x00,0x22,0x66,0x66,0xEE,0xAA,0xEE,0xEE,0x77,0x77,0x77,0x77,0xFF,0xFF,0xFF,0xFF,
+	0x00,0x00,0x00,0x00,0x88,0x88,0x88,0x88,0x11,0x11,0x55,0x11,0x99,0x99,0xDD,0xFF,
+	0x00,0x22,0x66,0x66,0xAA,0xAA,0xAA,0xAA,0x33,0x33,0x33,0x33,0xBB,0xBB,0xFF,0xFF,
+	0x00,0x00,0x44,0x44,0xCC,0xCC,0xCC,0xCC,0x11,0x11,0x55,0x55,0x99,0x99,0xDD,0xDD,
+	0x00,0x22,0x66,0x66,0xEE,0xAA,0xEE,0xEE,0xFF,0xFF,0xFF,0x77,0xFF,0xFF,0xFF,0xFF
+};
+
+// This alternate table colors 0110000 as a permutation of 0110, so that runs of medium colors
+// against black or white produce 4n colored pixels instead of 4n-2. It is disabled because it
+// makes colorized 40-column text annoying to read. The 0010000 rule causes problems for
+// 80-column text, but that's a lost cause anyway.
+// static uint8_t const artifact_color_lut[1<<7] = {
+// 	0x00,0x00,0x00,0x00,0x88,0x00,0xCC,0x00,0x11,0x11,0x55,0x11,0x99,0x99,0xDD,0xFF,
+// 	0x22,0x22,0x66,0x66,0xAA,0xAA,0xEE,0xEE,0x33,0x33,0x33,0x33,0xBB,0xBB,0xFF,0xFF,
+// 	0x00,0x00,0x44,0x44,0xCC,0xCC,0xCC,0xCC,0x55,0x55,0x55,0x55,0x99,0x99,0xDD,0xFF,
+// 	0x66,0x22,0x66,0x66,0xEE,0xAA,0xEE,0xEE,0x77,0x77,0x77,0x77,0xFF,0xFF,0xFF,0xFF,
+// 	0x00,0x00,0x00,0x00,0x88,0x88,0x88,0x88,0x11,0x11,0x55,0x11,0x99,0x99,0xDD,0x99,
+// 	0x00,0x22,0x66,0x66,0xAA,0xAA,0xAA,0xAA,0x33,0x33,0x33,0x33,0xBB,0xBB,0xFF,0xFF,
+// 	0x00,0x00,0x44,0x44,0xCC,0xCC,0xCC,0xCC,0x11,0x11,0x55,0x55,0x99,0x99,0xDD,0xDD,
+// 	0x00,0x22,0x66,0x66,0xEE,0xAA,0xEE,0xEE,0xFF,0x33,0xFF,0x77,0xFF,0xFF,0xFF,0xFF,
+// };
 
 template <a2_video_device::model Model, bool Invert, bool Flip>
 void a2_video_device::plot_text_character(bitmap_ind16 &bitmap, int xpos, int ypos, int xscale, uint32_t code, int fg, int bg)
@@ -224,20 +297,12 @@ void a2_video_device::plot_text_character(bitmap_ind16 &bitmap, int xpos, int yp
 	}
 }
 
-inline bool a2_video_device::use_page_2() const { return m_page2 && !m_80store; }
-
 void a2_video_device::lores_update(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect, int beginrow, int endrow)
 {
 	uint32_t const start_address = use_page_2() ? 0x0800 : 0x0400;
-	int fg = 0;
 
-	switch (m_sysconfig & 0x03)
-	{
-		case 0: case 4: fg = WHITE; break;
-		case 1: fg = WHITE; break;
-		case 2: fg = GREEN; break;
-		case 3: fg = ORANGE; break;
-	}
+	bool const monochrome = monochrome_monitor();
+	int const fg = monochrome_hue();
 
 	/* perform adjustments */
 	beginrow = (std::max)(beginrow, cliprect.top());
@@ -249,7 +314,7 @@ void a2_video_device::lores_update(screen_device &screen, bitmap_ind16 &bitmap, 
 
 	//printf("GR: row %d startcol %d stopcol %d left %d right %d\n", beginrow, startcol, stopcol, cliprect.left(), cliprect.right());
 
-	if (!(m_sysconfig & 0x03))  // color
+	if (!monochrome)
 	{
 		for (int row = startrow; row <= stoprow; row += 8)
 		{
@@ -346,15 +411,9 @@ void a2_video_device::dlores_update(screen_device &screen, bitmap_ind16 &bitmap,
 {
 	uint32_t const start_address = use_page_2() ? 0x0800 : 0x0400;
 	static const int aux_colors[16] = { 0, 2, 4, 6, 8, 0xa, 0xc, 0xe, 1, 3, 5, 7, 9, 0xb, 0xd, 0xf };
-	int fg = 0;
 
-	switch (m_sysconfig & 0x03)
-	{
-		case 0: case 4: fg = WHITE; break;
-		case 1: fg = WHITE; break;
-		case 2: fg = GREEN; break;
-		case 3: fg = ORANGE; break;
-	}
+	bool const monochrome = monochrome_monitor();
+	int const fg = monochrome_hue();
 
 	/* perform adjustments */
 	beginrow = (std::max)(beginrow, cliprect.top() - (cliprect.top() % 8));
@@ -365,7 +424,7 @@ void a2_video_device::dlores_update(screen_device &screen, bitmap_ind16 &bitmap,
 	const int startcol = (cliprect.left() / 14);
 	const int stopcol = ((cliprect.right() / 14) + 1);
 
-	if (!(m_sysconfig & 0x03))
+	if (!monochrome)
 	{
 		for (int row = startrow; row <= stoprow; row += 8)
 		{
@@ -451,7 +510,7 @@ void a2_video_device::dlores_update(screen_device &screen, bitmap_ind16 &bitmap,
 						unsigned const color1 = (auxcode >> (y & 4)) & 0x0F;
 						unsigned const color2 = (code >> (y & 4)) & 0x0F;
 						unsigned allbits = (((color1 * 0x111) >> ((col * 14) & 3)) & 0x007f)
-						                 + (((color2 * 0x8880) >> ((col * 14) & 3)) & 0x3f80);
+										 + (((color2 * 0x8880) >> ((col * 14) & 3)) & 0x3f80);
 
 						// Workaround for Github issue #10760: shift everything right by one pixel
 						// (losing the last pixel of each row) so that the NTSC shader sees what
@@ -489,22 +548,8 @@ void a2_video_device::text_update(screen_device &screen, bitmap_ind16 &bitmap, c
 
 	// printf("TXT: row %d startcol %d stopcol %d left %d right %d\n", beginrow, startcol, stopcol, cliprect.left(), cliprect.right());
 
-	int fg, bg;
-	if (Model == model::IIGS)
-	{
-		fg = m_GSfg;
-		bg = m_GSbg;
-	}
-	else
-	{
-		switch (m_sysconfig & 0x03)
-		{
-			case 2: fg = GREEN; break;
-			case 3: fg = ORANGE; break;
-			default: fg = WHITE; break;
-		}
-		bg = 0;
-	}
+	int fg = (Model == model::IIGS) ? m_GSfg : monochrome_hue();
+	int bg = (Model == model::IIGS) ? m_GSbg : BLACK;
 
 	for (int row = startrow; row < stoprow; row += 8)
 	{
@@ -525,7 +570,7 @@ void a2_video_device::text_update(screen_device &screen, bitmap_ind16 &bitmap, c
 			{
 				/* calculate address */
 				uint32_t const address = start_address + ((((row / 8) & 0x07) << 7) | (((row / 8) & 0x18) * 5 + col));
-				if ((Model == model::II || Model == model::IIE) && (m_sysconfig & 7) == 4 && m_dhires)
+				if (Model == model::IIE && rgb_monitor() && m_dhires)
 				{
 					u8 tmp = aux_page[address];
 					fg = tmp >> 4;
@@ -549,46 +594,6 @@ template void a2_video_device::text_update<a2_video_device::model::IIE, false, f
 template void a2_video_device::text_update<a2_video_device::model::IIGS, false, false>(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect, int beginrow, int endrow);
 template void a2_video_device::text_update<a2_video_device::model::II_J_PLUS, true, true>(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect, int beginrow, int endrow);
 template void a2_video_device::text_update<a2_video_device::model::IVEL_ULTRA, true, false>(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect, int beginrow, int endrow);
-
-// This table defines the color of each HGR pixel based on a 7-bit sliding window.
-// All colors follow from bit-reversal and bit-flip symmetries and the rules
-//   [0000]11x
-//   x[0000]xx
-//   [00100]xx
-//   x[00100]x
-//   x[01100]x
-//   [01110]xx
-//   x[01110]x
-// where x is a don't-care bit, and the bracketed bits are the 4-bit repeating
-// pattern that determines the color. The color is duplicated in both nibbles of
-// each byte to slightly simplify the rotate-4-bits logic. 0x55 (an otherwise
-// unused color) is a placeholder for impossible bit patterns.
-static uint8_t const hgr_color_lut[0x80] = {
-	0x00,0x00,0x00,0x00,0x88,0x55,0x00,0x00,0x11,0x11,0x55,0x55,0x99,0x99,0xDD,0xFF,
-	0x22,0x55,0x55,0x22,0x55,0x55,0x55,0x55,0x33,0x33,0x55,0x77,0xBB,0x55,0xFF,0xFF,
-	0x00,0x00,0x55,0x55,0x55,0x55,0xCC,0xCC,0x55,0x55,0x55,0x55,0x55,0x55,0x55,0x55,
-	0x00,0x22,0x66,0x66,0x55,0x55,0xEE,0xEE,0x77,0x77,0x55,0x55,0xFF,0xFF,0xFF,0xFF,
-	0x00,0x00,0x00,0x00,0x55,0x55,0x88,0x88,0x11,0x11,0x55,0x55,0x99,0x99,0xDD,0xFF,
-	0x55,0x55,0x55,0x55,0x55,0x55,0x55,0x55,0x33,0x33,0x55,0x55,0x55,0x55,0xFF,0xFF,
-	0x00,0x00,0x55,0x44,0x88,0x55,0xCC,0xCC,0x55,0x55,0x55,0x55,0xDD,0x55,0x55,0xDD,
-	0x00,0x22,0x66,0x66,0x55,0x55,0xEE,0xEE,0xFF,0xFF,0x55,0x77,0xFF,0xFF,0xFF,0xFF
-};
-
-// This alternate table turns n repeats of 0110 into a run of 4n colored pixels, versus
-// 4n-2 for the other one. n=1 runs produced by the other table are noticeably too dim,
-// while with this table the brightness is consistent and roughly correct. But the
-// wider runs look too wide and make text annoying to read. This table is generated by
-// [0000]xx1 x[0000]xx [00100]xx x[00100]x [01100]xx x[01100]x [01110]x0 x[01110]x.
-// static uint8_t const hgr_color_lut[0x80] = {
-// 	0x00,0x00,0x00,0x00,0x88,0x55,0xCC,0x00,0x11,0x11,0x55,0x55,0x99,0x99,0xDD,0xFF,
-// 	0x22,0x55,0x55,0x22,0x55,0x55,0x55,0x55,0x33,0x33,0x55,0x77,0xBB,0x55,0xFF,0xFF,
-// 	0x00,0x00,0x55,0x55,0x55,0x55,0xCC,0xCC,0x55,0x55,0x55,0x55,0x55,0x55,0x55,0x55,
-// 	0x66,0x66,0x66,0x66,0x55,0x55,0xEE,0xEE,0x77,0x33,0x55,0x55,0xFF,0xFF,0xFF,0xFF,
-// 	0x00,0x00,0x00,0x00,0x55,0x55,0xCC,0x88,0x11,0x11,0x55,0x55,0x99,0x99,0x99,0x99,
-// 	0x55,0x55,0x55,0x55,0x55,0x55,0x55,0x55,0x33,0x33,0x55,0x55,0x55,0x55,0xFF,0xFF,
-// 	0x00,0x00,0x55,0x44,0x88,0x55,0xCC,0xCC,0x55,0x55,0x55,0x55,0xDD,0x55,0x55,0xDD,
-// 	0x00,0x22,0x66,0x66,0x55,0x55,0xEE,0xEE,0xFF,0x33,0x55,0x77,0xFF,0xFF,0xFF,0xFF
-// };
 
 static unsigned decode_hires_byte(uint8_t byte, unsigned last_output_bit) {
 	// duplicate the bottom 7 bits by bit twiddling
@@ -615,29 +620,11 @@ void a2_video_device::hgr_update(screen_device &screen, bitmap_ind16 &bitmap, co
 	if (endrow < beginrow)
 		return;
 
-	int mon_type = m_sysconfig & 0x03;
+	// B&W/Green/Amber monitor, CEC mono HGR mode, or IIgs $C021 monochrome HGR
+	bool const monochrome = monochrome_monitor() || m_monohgr || (m_monochrome & 0x80);
 
-	// CEC mono HGR mode
-	if ((m_monohgr) && (mon_type == 0))
-	{
-		mon_type = 1;
-	}
-
-	// IIgs $C021 monochrome HGR
-	if (m_monochrome & 0x80)
-	{
-		mon_type = 1;
-	}
-
-	int fg;
+	int const fg = monochrome_hue();
 	int const bg = BLACK;
-
-	switch (mon_type)
-	{
-		default: fg = WHITE; break;
-		case 2: fg = GREEN; break;
-		case 3: fg = ORANGE; break;
-	}
 
 	uint8_t const *const vram = &m_ram_ptr[use_page_2() ? 0x4000 : 0x2000];
 
@@ -661,20 +648,19 @@ void a2_video_device::hgr_update(screen_device &screen, bitmap_ind16 &bitmap, co
 				w |= decode_hires_byte(vram_row[col + 1] & bit7_mask, w >> (3 + 13)) << (3 + 14);
 			}
 
-			switch (mon_type)
+			if (!monochrome)
 			{
-			case 0:
 				for (int b = 0; b < 14; b++)
 				{
 					if (((col * 14 + b) >= cliprect.left()) && ((col * 14 + b) <= cliprect.right()))
 					{
-						*p = uint8_t(hgr_color_lut[(w >> b) & 0x7f] << ((col * 14 + b) & 3)) >> 4;
+						*p = rotl4b(artifact_color_lut[(w >> b) & 0x7f], col * 14 + b);
 					}
 					p++;
 				}
-				break;
-
-			default:  // 1, 2, 3
+			}
+			else
+			{
 				for (int b = 0; b < 14; b++)
 				{
 					if (((col * 14 + b) >= cliprect.left()) && ((col * 14 + b) <= cliprect.right()))
@@ -683,7 +669,6 @@ void a2_video_device::hgr_update(screen_device &screen, bitmap_ind16 &bitmap, co
 					}
 					p++;
 				}
-				break;
 			}
 		}
 	}
@@ -693,21 +678,11 @@ void a2_video_device::dhgr_update(screen_device &screen, bitmap_ind16 &bitmap, c
 {
 	uint16_t v;
 	int const page = use_page_2() ? 0x4000 : 0x2000;
-	int mon_type = m_sysconfig & 0x03;
-	bool const bIsRGB = ((m_sysconfig & 7) == 4);
-	bool const bIsRGBMixed = ((bIsRGB) && (m_rgbmode == 1));
+	int const rgbmode = rgb_monitor() ? m_rgbmode : -1;
 
-	// IIgs force-monochrome-DHR setting
-	if (m_newvideo & 0x20)
-	{
-		mon_type = 1;
-	}
-
-	// IIe RGB card monochrome DHR
-	if ((bIsRGB) && (m_rgbmode == 0))
-	{
-		mon_type = 1;
-	}
+	// B&W/Green/Amber monitor, IIgs force-monochrome-DHR setting, or IIe RGB card monochrome DHR
+	bool const monochrome = monochrome_monitor() || (m_newvideo & 0x20) || rgbmode == 0;
+	int const fg = monochrome_hue();
 
 	/* sanity checks */
 	if (beginrow < cliprect.top())
@@ -735,10 +710,33 @@ void a2_video_device::dhgr_update(screen_device &screen, bitmap_ind16 &bitmap, c
 
 		uint16_t *p = &bitmap.pix(row);
 
-		// RGB DHR 160-wide mode
-		if ((bIsRGB) && (m_rgbmode == 2))
+		if (rgbmode == 2)
 		{
-			mon_type = 4;
+			// Video-7 RGB 160-wide mode (which has a much simpler VRAM layout).
+			// Center a 480-wide image in the 560-wide display.
+			// Aspect ratio won't be perfect, but it's in range.
+
+			for (int b = 0; b < 40; b++)
+			{
+				*p++ = BLACK;
+			}
+			for (int col = 0; col < 80; col++)
+			{
+				v = vram_row[col+1];
+				*p++ = v & 0xf;
+				*p++ = v & 0xf;
+				*p++ = v & 0xf;
+				v >>= 4;
+				*p++ = v & 0xf;
+				*p++ = v & 0xf;
+				*p++ = v & 0xf;
+			}
+			for (int b = 0; b < 40; b++)
+			{
+				*p++ = BLACK;
+			}
+
+			continue;
 		}
 
 		for (int col = 0; col < 80; col++)
@@ -747,150 +745,61 @@ void a2_video_device::dhgr_update(screen_device &screen, bitmap_ind16 &bitmap, c
 						|   (((uint32_t) vram_row[col+1] & 0x7f) <<  7)
 						|   (((uint32_t) vram_row[col+2] & 0x7f) << 14);
 
-			/*
-			    DHGR pixel layout:
-			    column & 3 =  0        1        2        3
-			               nBBBAAAA nDDCCCCB nFEEEEDD nGGGGFFF
-
-			    n is don't care on the stock hardware's NTSC output.
-
-			    On RGB cards, in mixed mode (DHGR with special mode value == 1), n
-			    controls if a pixel quad starting in that byte is color or monochrome.
-			    Pixel quads A&B are controlled by n in byte 0, C&D by n in byte 1,
-			    E&F by n in byte 2, and G by n in byte 3.
-			*/
-
-			switch (mon_type)
+			if (monochrome)
 			{
-				case 0:
-					// every 3rd column, the first pixel quad is controlled by the previous
-					// byte's MSB, because we always draw 2 quads per column.
-					if ((bIsRGBMixed) && ((col & 3) == 3))
-					{
-						uint32_t tw = (w >> 6);
-
-						if (!(vram_row[col-1] & 0x80))
-						{
-							for (int b = 0; b < 4; b++)
-							{
-								v = (tw & 1);
-								tw >>= 1;
-								*(p++) = v ? WHITE : BLACK;
-							}
-						}
-						else
-						{
-							for (int b = 0; b < 4; b++)
-							{
-								v = ((((w >> (b + 7-1)) & 0x0F) * 0x11) >> (-(col*7+b) & 0x03)) & 0x0F;
-								*(p++) = v;
-							}
-						}
-
-						if (!(vram_row[col] & 0x80))
-						{
-							for (int b = 4; b < 7; b++)
-							{
-								v = (tw & 1);
-								tw >>= 1;
-								*(p++) = v ? WHITE : BLACK;
-							}
-						}
-						else
-						{
-							for (int b = 4; b < 7; b++)
-							{
-								v = ((((w >> (b + 7-1)) & 0x0F) * 0x11) >> (-(col*7+b) & 0x03)) & 0x0F;
-								*(p++) = v;
-							}
-						}
-					}
-					else
-					{
-						if ((bIsRGBMixed) && !(vram_row[col] & 0x80))
-						{
-							uint32_t tw = (w >> 6);
-							for (int b = 0; b < 7; b++)
-							{
-								v = (tw & 1);
-								tw >>= 1;
-								*(p++) = v ? WHITE : BLACK;
-							}
-						}
-						else
-						{
-							for (int b = 0; b < 7; b++)
-							{
-								v = ((((w >> (b + 7-1)) & 0x0F) * 0x11) >> (-(col*7+b) & 0x03)) & 0x0F;
-								*(p++) = v;
-							}
-						}
-					}
-					break;
-
-				case 1:
-					// Shifting by 6 instead of 7 here shifts the entire DHGR screen right one pixel, so the leftmost pixel is
-					// always black and the rightmost pixel is not shown. This is to work around a problem with the HLSL NTSC
-					// shader. See Github issues #6308 and #10759. This should be changed when there is a better solution.
-					w >>= 6;
-					for (int b = 0; b < 7; b++)
-					{
-						v = (w & 1);
-						w >>= 1;
-						*(p++) = v ? WHITE : BLACK;
-					}
-					break;
-
-				case 2:
-					// See case 1
-					w >>= 6;
-					for (int b = 0; b < 7; b++)
-					{
-						v = (w & 1);
-						w >>= 1;
-						*(p++) = v ? GREEN : BLACK;
-					}
-					break;
-
-				case 3:
-					// See case 1
-					w >>= 6;
-					for (int b = 0; b < 7; b++)
-					{
-						v = (w & 1);
-						w >>= 1;
-						*(p++) = v ? ORANGE : BLACK;
-					}
-					break;
-
-				// RGB 160-wide mode (which has a much simpler VRAM layout)
-				case 4:
-					if (col == 0)
-					{
-						// Center the 480-wide image in the 560-wide display.
-						// Aspect ratio won't be perfect, but it's in range.
-						for (int b = 0; b < 40; b++)
-						{
-							*(p++) = BLACK;
-						}
-					}
-					v = vram_row[col];
-					*(p++) = v & 0xf;
-					*(p++) = v & 0xf;
-					*(p++) = v & 0xf;
-					v >>= 4;
-					*(p++) = v & 0xf;
-					*(p++) = v & 0xf;
-					*(p++) = v & 0xf;
-					break;
+				// Shifting by 6 instead of 7 here shifts the entire DHGR screen right one pixel, so the leftmost pixel is
+				// always black and the rightmost pixel is not shown. This is to work around a problem with the HLSL NTSC
+				// shader. See Github issues #6308 and #10759. This should be changed when there is a better solution.
+				w >>= 6;
+				for (int b = 0; b < 7; b++)
+				{
+					v = (w & 1);
+					w >>= 1;
+					*(p++) = v ? fg : BLACK;
+				}
 			}
-		}
-
-		if (mon_type == 4)
-		{
-			for (int b = 0; b < 40; b++)
+			else if (rgbmode < 0)
 			{
-				*(p++) = BLACK;
+				for (int b = 0; b < 7; b++)
+				{
+					*p++ = rotl4((w >> (b + 7-1)) & 0x0F, col * 7 + b);
+				}
+			}
+			else
+			{
+				// Video-7 RGB with rgbmode == 1 (mixed) or 3 (color). In color mode, the card
+				// seems to produce just 7 wide pixels per 4 bytes:
+				//   column & 3 =  0        1        2        3
+				//              nBBBAAAA nDDCCCCB nFEEEEDD nGGGGFFF
+				//
+				// In mixed mode, the Video-7 User's Manual says:
+				//
+				// "When [the MSB is 0] the hardware displays the remaining seven bits as bit-mapped
+				// video; a logic 'one' will instruct the hardware to display the next seven bits
+				// as color pixels. [...] color aberrations will occur at the leading and trailing
+				// edges of the transitions from one mode to the other. The aberrations may be
+				// eliminated by blanking enough bytes at the beginning and end of each transition
+				// to guarantee the four bit integrity of the corresponding color pixels."
+				//
+				// It's impossible to know the nature of the aberrations without hardware to test,
+				// but hopefully this warning means software was designed so that it doesn't matter.
+
+				if (rgbmode == 1 && !(vram_row[col+1] & 0x80))  // monochrome
+				{
+					for (int b = 0; b < 7; b++)
+					{
+						*p++ = ((w >> (b + 7)) & 1) ? WHITE : BLACK;
+					}
+				}
+				else  // color
+				{
+					// In column 0 get the color from w bits 7-10 or 11-14,
+					// in column 1 get the color from w bits 4-7 or 8-11, etc.
+					for (int b = 0; b < 7; b++)
+					{
+						*p++ = rotl4((w >> (b - ((b - col) & 3) + 7)) & 0x0F, 1);
+					}
+				}
 			}
 		}
 	}
@@ -1159,3 +1068,25 @@ template uint32_t a2_video_device::screen_update<a2_video_device::model::IIE, fa
 template uint32_t a2_video_device::screen_update<a2_video_device::model::IIGS, false, false>(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect);
 template uint32_t a2_video_device::screen_update<a2_video_device::model::II_J_PLUS, true, true>(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect);
 template uint32_t a2_video_device::screen_update<a2_video_device::model::IVEL_ULTRA, true, false>(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect);
+
+static INPUT_PORTS_START( a2_vidconfig_composite );
+	PORT_START("a2_video_config")
+	PORT_CONFNAME(0x07, 0x00, "Monitor type")
+	PORT_CONFSETTING(0x00, "Color")
+	PORT_CONFSETTING(0x04, "B&W")
+	PORT_CONFSETTING(0x05, "Green")
+	PORT_CONFSETTING(0x06, "Amber")
+INPUT_PORTS_END
+
+static INPUT_PORTS_START( a2_vidconfig_composite_rgb )
+	PORT_START("a2_video_config")
+	PORT_CONFNAME(0x07, 0x00, "Monitor type")
+	PORT_CONFSETTING(0x00, "Color")
+	PORT_CONFSETTING(0x04, "B&W")
+	PORT_CONFSETTING(0x05, "Green")
+	PORT_CONFSETTING(0x06, "Amber")
+	PORT_CONFSETTING(0x03, "Video-7 RGB")
+INPUT_PORTS_END
+
+ioport_constructor a2_video_device_composite::device_input_ports() const { return INPUT_PORTS_NAME(a2_vidconfig_composite); }
+ioport_constructor a2_video_device_composite_rgb::device_input_ports() const { return INPUT_PORTS_NAME(a2_vidconfig_composite_rgb); }
