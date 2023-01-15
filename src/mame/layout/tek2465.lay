@@ -3,138 +3,428 @@
 license:CC0
 -->
 <mamelayout version="2">
-    <element name="led" defstate="0">
-        <disk state="0"><color red="0.43" green="0.35" blue="0.39" /></disk>
-        <disk state="1"><color red="1.0" green="0.18" blue="0.20" /></disk>
+    <element name="LED" defstate="0">
+        <rect state="0"><color red="1.0" green="1.0" blue="1.0" alpha="0.0" /></rect>
+        <rect state="1"><color red="1.0" green="0.18" blue="0.20" /></rect>
     </element>
-
-    <element name="Background">
-        <rect>
-                <color red="1.0" green="1.0" blue="1.0" />
-        </rect>
-        <image file="2465.svg" />
-    </element>
-
-    <element name="CPL_UP">
-        <rect state="0"><bounds x="0.0" y="0.0" width="1.0" height="1.0" /><color red="0.2" green="0.2" blue="0.2" /></rect>
-        <rect state="1"><bounds x="0.0" y="0.0" width="1.0" height="1.0" /><color red="0.1" green="0.1" blue="0.1" /></rect>
-        <rect state="0"><bounds x="0.1" y="0.1" width="0.9" height="0.9" /><color red="0.1" green="0.1" blue="0.1" /></rect>
-        <rect state="1"><bounds x="0.1" y="0.1" width="0.9" height="0.9" /><color red="0.2" green="0.2" blue="0.2" /></rect>
-        <rect><bounds x="0.1" y="0.1" width="0.8" height="0.8" /><color red="0.15" green="0.15" blue="0.15" /></rect>
-        <text string="UP"><bounds x="0.1" y="0.4" width="0.8" height="0.2" /><color red="1.0" green="1.0" blue="1.0" /></text>
-    </element>
-    <element name="CPL_DN">
-        <rect state="0"><bounds x="0.0" y="0.0" width="1.0" height="1.0" /><color red="0.2" green="0.2" blue="0.2" /></rect>
-        <rect state="1"><bounds x="0.0" y="0.0" width="1.0" height="1.0" /><color red="0.1" green="0.1" blue="0.1" /></rect>
-        <rect state="0"><bounds x="0.1" y="0.1" width="0.9" height="0.9" /><color red="0.1" green="0.1" blue="0.1" /></rect>
-        <rect state="1"><bounds x="0.1" y="0.1" width="0.9" height="0.9" /><color red="0.2" green="0.2" blue="0.2" /></rect>
-        <rect><bounds x="0.1" y="0.1" width="0.8" height="0.8" /><color red="0.15" green="0.15" blue="0.15" /></rect>
-        <text string="DN"><bounds x="0.1" y="0.4" width="0.8" height="0.2" /><color red="1.0" green="1.0" blue="1.0" /></text>
-    </element>
-
     <element name="BUTTON">
         <rect state="0">
             <bounds x="0.0" y="0.0" width="1.0" height="1.0" />
-            <color red="1.0" green="1.0" blue="1.0" />
+            <color red="1.0" green="1.0" blue="1.0" alpha="0.0"/>
         </rect>
         <rect state="1">
             <bounds x="0.0" y="0.0" width="1.0" height="1.0" />
             <color red="0.5" green="0.5" blue="0.5" />
         </rect>
     </element>
-
+    <element name="Bezel">
+        <image>
+            <data><![CDATA[<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg width="302mm" height="150mm"
+  xmlns="http://www.w3.org/2000/svg">
+<rect x="1.5mm" y="1.5mm" width="299mm" height="147mm" rx="10mm" ry="10mm"
+        style="fill:rgb(255,255,255);stroke-width:3mm;stroke:rgb(0,0,0)"/>
+<rect x="7.75mm" y="1.5mm" width="132.6mm" height="142mm" rx="5mm" ry="5mm"
+        style="fill:rgb(255,255,255);stroke-width:3mm;stroke:rgb(0,0,0)"/>
+<rect x="15.25mm" y="13.8mm" width="117mm" height="102.6mm" rx="5mm" ry="5mm"
+        style="fill:rgb(255,255,255);stroke-width:3mm;stroke:rgb(0,0,0)"/>
+<rect x="21.75mm" y="22.8mm" width="104mm" height="82.2mm" rx="0.1mm" ry="0.1mm"
+        style="fill:rgb(255,255,255);stroke-width:1mm;stroke:rgb(0,0,0)"/>
+<circle cx="159.25mm" cy="78mm" r="8.55mm"
+        style="fill:rgb(255,255,255);stroke-width:0.5mm;stroke:rgb(0,0,0)"/>
+<circle cx="159.25mm" cy="78mm" r="4.75mm"
+        style="fill:rgb(255,255,255);stroke-width:0.5mm;stroke:rgb(0,0,0)"/>
+<circle cx="191.25mm" cy="78mm" r="8.55mm"
+        style="fill:rgb(255,255,255);stroke-width:0.5mm;stroke:rgb(0,0,0)"/>
+<circle cx="191.25mm" cy="78mm" r="4.75mm"
+        style="fill:rgb(255,255,255);stroke-width:0.5mm;stroke:rgb(0,0,0)"/>
+<circle cx="226.25mm" cy="78mm" r="14.1mm"
+        style="fill:rgb(255,255,255);stroke-width:0.1mm;stroke:rgb(0,0,0)"/>
+<circle cx="226.25mm" cy="78mm" r="10.4mm"
+        style="fill:rgb(255,255,255);stroke-width:0.5mm;stroke:rgb(0,0,0)"/>
+<circle cx="226.25mm" cy="78mm" r="4.75mm"
+        style="fill:rgb(255,255,255);stroke-width:0.5mm;stroke:rgb(0,0,0)"/>
+<circle cx="158.25mm" cy="130mm" r="6.9mm"
+        style="fill:rgb(255,255,255);stroke-width:1mm;stroke:rgb(0,0,0)"/>
+<circle cx="158.25mm" cy="130mm" r="4.55mm"
+        style="fill:rgb(255,255,255);stroke-width:0.5mm;stroke:rgb(0,0,0)"/>
+<circle cx="158.25mm" cy="130mm" r="1.85mm"
+        style="fill:rgb(255,255,255);stroke-width:1mm;stroke:rgb(0,0,0)"/>
+<circle cx="200.25mm" cy="130mm" r="6.9mm"
+        style="fill:rgb(255,255,255);stroke-width:1mm;stroke:rgb(0,0,0)"/>
+<circle cx="200.25mm" cy="130mm" r="4.55mm"
+        style="fill:rgb(255,255,255);stroke-width:0.5mm;stroke:rgb(0,0,0)"/>
+<circle cx="200.25mm" cy="130mm" r="1.85mm"
+        style="fill:rgb(255,255,255);stroke-width:1mm;stroke:rgb(0,0,0)"/>
+<circle cx="237.25mm" cy="130mm" r="6.9mm"
+        style="fill:rgb(255,255,255);stroke-width:1mm;stroke:rgb(0,0,0)"/>
+<circle cx="237.25mm" cy="130mm" r="4.55mm"
+        style="fill:rgb(255,255,255);stroke-width:0.5mm;stroke:rgb(0,0,0)"/>
+<circle cx="237.25mm" cy="130mm" r="1.85mm"
+        style="fill:rgb(255,255,255);stroke-width:1mm;stroke:rgb(0,0,0)"/>
+<circle cx="281.25mm" cy="130mm" r="6.9mm"
+        style="fill:rgb(255,255,255);stroke-width:1mm;stroke:rgb(0,0,0)"/>
+<circle cx="281.25mm" cy="130mm" r="4.55mm"
+        style="fill:rgb(255,255,255);stroke-width:0.5mm;stroke:rgb(0,0,0)"/>
+<circle cx="281.25mm" cy="130mm" r="1.85mm"
+        style="fill:rgb(255,255,255);stroke-width:1mm;stroke:rgb(0,0,0)"/>
+<circle cx="127.61mm" cy="134mm" r="4.75mm"
+        style="fill:rgb(255,255,255);stroke-width:0.5mm;stroke:rgb(0,0,0)"/>
+<rect x="264.8mm" y="12.05mm" width="5.9mm" height="3.9mm"
+        style="fill:rgb(255,255,255);stroke-width:0.1mm;stroke:rgb(0,0,0)"/>
+<rect x="264.8mm" y="16.05mm" width="5.9mm" height="3.9mm"
+        style="fill:rgb(255,255,255);stroke-width:0.1mm;stroke:rgb(0,0,0)"/>
+<rect x="264.8mm" y="20.05mm" width="5.9mm" height="3.9mm"
+        style="fill:rgb(255,255,255);stroke-width:0.1mm;stroke:rgb(0,0,0)"/>
+<rect x="264.8mm" y="24.05mm" width="5.9mm" height="3.9mm"
+        style="fill:rgb(255,255,255);stroke-width:0.1mm;stroke:rgb(0,0,0)"/>
+<rect x="249.3mm" y="44.05mm" width="5.9mm" height="3.9mm"
+        style="fill:rgb(255,255,255);stroke-width:0.1mm;stroke:rgb(0,0,0)"/>
+<rect x="249.3mm" y="48.05mm" width="5.9mm" height="3.9mm"
+        style="fill:rgb(255,255,255);stroke-width:0.1mm;stroke:rgb(0,0,0)"/>
+<rect x="249.3mm" y="52.05mm" width="5.9mm" height="3.9mm"
+        style="fill:rgb(255,255,255);stroke-width:0.1mm;stroke:rgb(0,0,0)"/>
+<rect x="249.3mm" y="56.05mm" width="5.9mm" height="3.9mm"
+        style="fill:rgb(255,255,255);stroke-width:0.1mm;stroke:rgb(0,0,0)"/>
+<rect x="249.3mm" y="64.05mm" width="5.9mm" height="3.9mm"
+        style="fill:rgb(255,255,255);stroke-width:0.1mm;stroke:rgb(0,0,0)"/>
+<rect x="249.3mm" y="68.05mm" width="5.9mm" height="3.9mm"
+        style="fill:rgb(255,255,255);stroke-width:0.1mm;stroke:rgb(0,0,0)"/>
+<rect x="260.90000000000003mm" y="44.05mm" width="5.9mm" height="3.9mm"
+        style="fill:rgb(255,255,255);stroke-width:0.1mm;stroke:rgb(0,0,0)"/>
+<rect x="260.90000000000003mm" y="48.05mm" width="5.9mm" height="3.9mm"
+        style="fill:rgb(255,255,255);stroke-width:0.1mm;stroke:rgb(0,0,0)"/>
+<rect x="260.90000000000003mm" y="52.05mm" width="5.9mm" height="3.9mm"
+        style="fill:rgb(255,255,255);stroke-width:0.1mm;stroke:rgb(0,0,0)"/>
+<rect x="260.90000000000003mm" y="56.05mm" width="5.9mm" height="3.9mm"
+        style="fill:rgb(255,255,255);stroke-width:0.1mm;stroke:rgb(0,0,0)"/>
+<rect x="260.90000000000003mm" y="60.05mm" width="5.9mm" height="3.9mm"
+        style="fill:rgb(255,255,255);stroke-width:0.1mm;stroke:rgb(0,0,0)"/>
+<rect x="260.90000000000003mm" y="64.05mm" width="5.9mm" height="3.9mm"
+        style="fill:rgb(255,255,255);stroke-width:0.1mm;stroke:rgb(0,0,0)"/>
+<rect x="272.5mm" y="44.05mm" width="5.9mm" height="3.9mm"
+        style="fill:rgb(255,255,255);stroke-width:0.1mm;stroke:rgb(0,0,0)"/>
+<rect x="272.5mm" y="48.05mm" width="5.9mm" height="3.9mm"
+        style="fill:rgb(255,255,255);stroke-width:0.1mm;stroke:rgb(0,0,0)"/>
+<rect x="272.5mm" y="52.05mm" width="5.9mm" height="3.9mm"
+        style="fill:rgb(255,255,255);stroke-width:0.1mm;stroke:rgb(0,0,0)"/>
+<rect x="272.5mm" y="56.05mm" width="5.9mm" height="3.9mm"
+        style="fill:rgb(255,255,255);stroke-width:0.1mm;stroke:rgb(0,0,0)"/>
+<rect x="272.5mm" y="60.05mm" width="5.9mm" height="3.9mm"
+        style="fill:rgb(255,255,255);stroke-width:0.1mm;stroke:rgb(0,0,0)"/>
+<rect x="151.3mm" y="92.05mm" width="5.9mm" height="3.9mm"
+        style="fill:rgb(255,255,255);stroke-width:0.1mm;stroke:rgb(0,0,0)"/>
+<rect x="151.3mm" y="96.05mm" width="5.9mm" height="3.9mm"
+        style="fill:rgb(255,255,255);stroke-width:0.1mm;stroke:rgb(0,0,0)"/>
+<rect x="151.3mm" y="100.05mm" width="5.9mm" height="3.9mm"
+        style="fill:rgb(255,255,255);stroke-width:0.1mm;stroke:rgb(0,0,0)"/>
+<rect x="151.3mm" y="104.05mm" width="5.9mm" height="3.9mm"
+        style="fill:rgb(255,255,255);stroke-width:0.1mm;stroke:rgb(0,0,0)"/>
+<rect x="151.3mm" y="108.05mm" width="5.9mm" height="3.9mm"
+        style="fill:rgb(255,255,255);stroke-width:0.1mm;stroke:rgb(0,0,0)"/>
+<rect x="183.3mm" y="92.05mm" width="5.9mm" height="3.9mm"
+        style="fill:rgb(255,255,255);stroke-width:0.1mm;stroke:rgb(0,0,0)"/>
+<rect x="183.3mm" y="96.05mm" width="5.9mm" height="3.9mm"
+        style="fill:rgb(255,255,255);stroke-width:0.1mm;stroke:rgb(0,0,0)"/>
+<rect x="183.3mm" y="100.05mm" width="5.9mm" height="3.9mm"
+        style="fill:rgb(255,255,255);stroke-width:0.1mm;stroke:rgb(0,0,0)"/>
+<rect x="183.3mm" y="104.05mm" width="5.9mm" height="3.9mm"
+        style="fill:rgb(255,255,255);stroke-width:0.1mm;stroke:rgb(0,0,0)"/>
+<rect x="183.3mm" y="108.05mm" width="5.9mm" height="3.9mm"
+        style="fill:rgb(255,255,255);stroke-width:0.1mm;stroke:rgb(0,0,0)"/>
+<circle cx="15.61mm" cy="134mm" r="4.25mm"
+        style="fill:rgb(255,255,255);stroke-width:1mm;stroke:rgb(0,0,0)"/>
+<circle cx="15.61mm" cy="134mm" r="2.2mm"
+        style="fill:rgb(255,255,255);stroke-width:1mm;stroke:rgb(0,0,0)"/>
+<circle cx="45.91mm" cy="134mm" r="4.25mm"
+        style="fill:rgb(255,255,255);stroke-width:1mm;stroke:rgb(0,0,0)"/>
+<circle cx="45.91mm" cy="134mm" r="2.2mm"
+        style="fill:rgb(255,255,255);stroke-width:1mm;stroke:rgb(0,0,0)"/>
+<circle cx="76.21000000000001mm" cy="134mm" r="4.25mm"
+        style="fill:rgb(255,255,255);stroke-width:1mm;stroke:rgb(0,0,0)"/>
+<circle cx="76.21000000000001mm" cy="134mm" r="2.2mm"
+        style="fill:rgb(255,255,255);stroke-width:1mm;stroke:rgb(0,0,0)"/>
+<circle cx="106.51mm" cy="134mm" r="4.25mm"
+        style="fill:rgb(255,255,255);stroke-width:1mm;stroke:rgb(0,0,0)"/>
+<circle cx="106.51mm" cy="134mm" r="2.2mm"
+        style="fill:rgb(255,255,255);stroke-width:1mm;stroke:rgb(0,0,0)"/>
+<circle cx="163.75mm" cy="20mm" r="4.25mm"
+        style="fill:rgb(255,255,255);stroke-width:1mm;stroke:rgb(0,0,0)"/>
+<circle cx="163.75mm" cy="20mm" r="2.2mm"
+        style="fill:rgb(255,255,255);stroke-width:1mm;stroke:rgb(0,0,0)"/>
+<circle cx="189.35mm" cy="20mm" r="4.25mm"
+        style="fill:rgb(255,255,255);stroke-width:1mm;stroke:rgb(0,0,0)"/>
+<circle cx="189.35mm" cy="20mm" r="2.2mm"
+        style="fill:rgb(255,255,255);stroke-width:1mm;stroke:rgb(0,0,0)"/>
+<circle cx="214.95mm" cy="20mm" r="4.25mm"
+        style="fill:rgb(255,255,255);stroke-width:1mm;stroke:rgb(0,0,0)"/>
+<circle cx="214.95mm" cy="20mm" r="2.2mm"
+        style="fill:rgb(255,255,255);stroke-width:1mm;stroke:rgb(0,0,0)"/>
+<circle cx="251.75mm" cy="20mm" r="4.25mm"
+        style="fill:rgb(255,255,255);stroke-width:1mm;stroke:rgb(0,0,0)"/>
+<circle cx="251.75mm" cy="20mm" r="2.2mm"
+        style="fill:rgb(255,255,255);stroke-width:1mm;stroke:rgb(0,0,0)"/>
+<circle cx="283.75mm" cy="20mm" r="4.25mm"
+        style="fill:rgb(255,255,255);stroke-width:1mm;stroke:rgb(0,0,0)"/>
+<circle cx="283.75mm" cy="20mm" r="2.2mm"
+        style="fill:rgb(255,255,255);stroke-width:1mm;stroke:rgb(0,0,0)"/>
+<circle cx="214.25mm" cy="52mm" r="4.25mm"
+        style="fill:rgb(255,255,255);stroke-width:1mm;stroke:rgb(0,0,0)"/>
+<circle cx="214.25mm" cy="52mm" r="2.2mm"
+        style="fill:rgb(255,255,255);stroke-width:1mm;stroke:rgb(0,0,0)"/>
+<circle cx="236.55mm" cy="52mm" r="4.25mm"
+        style="fill:rgb(255,255,255);stroke-width:1mm;stroke:rgb(0,0,0)"/>
+<circle cx="236.55mm" cy="52mm" r="2.2mm"
+        style="fill:rgb(255,255,255);stroke-width:1mm;stroke:rgb(0,0,0)"/>
+<circle cx="214.25mm" cy="104mm" r="4.25mm"
+        style="fill:rgb(255,255,255);stroke-width:1mm;stroke:rgb(0,0,0)"/>
+<circle cx="214.25mm" cy="104mm" r="2.2mm"
+        style="fill:rgb(255,255,255);stroke-width:1mm;stroke:rgb(0,0,0)"/>
+<circle cx="238.25mm" cy="104mm" r="4.25mm"
+        style="fill:rgb(255,255,255);stroke-width:1mm;stroke:rgb(0,0,0)"/>
+<circle cx="238.25mm" cy="104mm" r="2.2mm"
+        style="fill:rgb(255,255,255);stroke-width:1mm;stroke:rgb(0,0,0)"/>
+<circle cx="281.25mm" cy="104mm" r="4.25mm"
+        style="fill:rgb(255,255,255);stroke-width:1mm;stroke:rgb(0,0,0)"/>
+<circle cx="281.25mm" cy="104mm" r="2.2mm"
+        style="fill:rgb(255,255,255);stroke-width:1mm;stroke:rgb(0,0,0)"/>
+<rect x="28.709999999999997mm" y="131.95mm" width="4.1mm" height="4.1mm"
+        style="fill:rgb(255,255,255);stroke-width:0.4mm;stroke:rgb(0,0,0)"/>
+<rect x="228.89999999999998mm" y="17.95mm" width="4.1mm" height="4.1mm"
+        style="fill:rgb(255,255,255);stroke-width:0.4mm;stroke:rgb(0,0,0)"/>
+<rect x="158.7mm" y="33.75mm" width="4.1mm" height="4.1mm"
+        style="fill:rgb(255,255,255);stroke-width:0.4mm;stroke:rgb(0,0,0)"/>
+<rect x="168.53333333333333mm" y="33.75mm" width="4.1mm" height="4.1mm"
+        style="fill:rgb(255,255,255);stroke-width:0.4mm;stroke:rgb(0,0,0)"/>
+<rect x="178.36666666666665mm" y="33.75mm" width="4.1mm" height="4.1mm"
+        style="fill:rgb(255,255,255);stroke-width:0.4mm;stroke:rgb(0,0,0)"/>
+<rect x="188.2mm" y="33.75mm" width="4.1mm" height="4.1mm"
+        style="fill:rgb(255,255,255);stroke-width:0.4mm;stroke:rgb(0,0,0)"/>
+<rect x="212.89999999999998mm" y="33.75mm" width="4.1mm" height="4.1mm"
+        style="fill:rgb(255,255,255);stroke-width:0.4mm;stroke:rgb(0,0,0)"/>
+<rect x="222.73333333333332mm" y="33.75mm" width="4.1mm" height="4.1mm"
+        style="fill:rgb(255,255,255);stroke-width:0.4mm;stroke:rgb(0,0,0)"/>
+<rect x="232.56666666666663mm" y="33.75mm" width="4.1mm" height="4.1mm"
+        style="fill:rgb(255,255,255);stroke-width:0.4mm;stroke:rgb(0,0,0)"/>
+<rect x="249.65mm" y="33.75mm" width="4.1mm" height="4.1mm"
+        style="fill:rgb(255,255,255);stroke-width:0.4mm;stroke:rgb(0,0,0)"/>
+<rect x="264.95mm" y="33.75mm" width="4.1mm" height="4.1mm"
+        style="fill:rgb(255,255,255);stroke-width:0.4mm;stroke:rgb(0,0,0)"/>
+<rect x="158.7mm" y="49.15mm" width="4.1mm" height="4.1mm"
+        style="fill:rgb(255,255,255);stroke-width:0.4mm;stroke:rgb(0,0,0)"/>
+<rect x="168.53333333333333mm" y="49.15mm" width="4.1mm" height="4.1mm"
+        style="fill:rgb(255,255,255);stroke-width:0.4mm;stroke:rgb(0,0,0)"/>
+<rect x="178.36666666666665mm" y="49.15mm" width="4.1mm" height="4.1mm"
+        style="fill:rgb(255,255,255);stroke-width:0.4mm;stroke:rgb(0,0,0)"/>
+<rect x="188.2mm" y="49.15mm" width="4.1mm" height="4.1mm"
+        style="fill:rgb(255,255,255);stroke-width:0.4mm;stroke:rgb(0,0,0)"/>
+<rect x="251.2mm" y="101.95mm" width="4.1mm" height="4.1mm"
+        style="fill:rgb(255,255,255);stroke-width:0.4mm;stroke:rgb(0,0,0)"/>
+<rect x="261.2mm" y="101.95mm" width="4.1mm" height="4.1mm"
+        style="fill:rgb(255,255,255);stroke-width:0.4mm;stroke:rgb(0,0,0)"/>
+<rect x="249.2mm" y="78.0mm" width="6.1mm" height="11.0mm"
+        style="fill:rgb(255,255,255);stroke-width:0.5mm;stroke:rgb(0,0,0)"/>
+<rect x="249.45mm" y="82.25mm" width="5.6mm" height="2.5mm"
+        style="fill:rgb(255,255,255);stroke-width:1mm;stroke:rgb(0,0,0)"/>
+<rect x="260.8mm" y="78.0mm" width="6.1mm" height="11.0mm"
+        style="fill:rgb(255,255,255);stroke-width:0.5mm;stroke:rgb(0,0,0)"/>
+<rect x="261.05mm" y="82.25mm" width="5.6mm" height="2.5mm"
+        style="fill:rgb(255,255,255);stroke-width:1mm;stroke:rgb(0,0,0)"/>
+<rect x="272.4mm" y="78.0mm" width="6.1mm" height="11.0mm"
+        style="fill:rgb(255,255,255);stroke-width:0.5mm;stroke:rgb(0,0,0)"/>
+<rect x="272.65mm" y="82.25mm" width="5.6mm" height="2.5mm"
+        style="fill:rgb(255,255,255);stroke-width:1mm;stroke:rgb(0,0,0)"/>
+<rect x="162.2mm" y="98.5mm" width="6.1mm" height="11.0mm"
+        style="fill:rgb(255,255,255);stroke-width:0.5mm;stroke:rgb(0,0,0)"/>
+<rect x="162.45mm" y="102.75mm" width="5.6mm" height="2.5mm"
+        style="fill:rgb(255,255,255);stroke-width:1mm;stroke:rgb(0,0,0)"/>
+<rect x="194.2mm" y="98.5mm" width="6.1mm" height="11.0mm"
+        style="fill:rgb(255,255,255);stroke-width:0.5mm;stroke:rgb(0,0,0)"/>
+<rect x="194.45mm" y="102.75mm" width="5.6mm" height="2.5mm"
+        style="fill:rgb(255,255,255);stroke-width:1mm;stroke:rgb(0,0,0)"/>
+</svg>]]>
+            </data>
+        </image>
+    </element>
     <view name="Front Panel">
-        <element ref="Background">
-            <bounds x="0" y="0" width="489.16086" height="240.4364" />
+        <element ref="Bezel">
+            <bounds x="0" y="0" width="302" height="150" />
         </element>
 
         <screen index="0">
-            <bounds x="36.902576" y="37.86998" width="161.82976" height="129.63997" />
+            <bounds x="21.25" y="22.3" width="105" height="83.2" />
         </screen>
+<element ref="BUTTON" inputtag="ROW8" inputmask="0x1">
+    <bounds x="228.7" y="17.75" width="4.5" height="4.5" />
+</element>
+<element ref="BUTTON" inputtag="ROW6" inputmask="0x1">
+    <bounds x="158.5" y="33.55" width="4.5" height="4.5" />
+</element>
+<element ref="BUTTON" inputtag="ROW6" inputmask="0x2">
+    <bounds x="168.33333333333334" y="33.55" width="4.5" height="4.5" />
+</element>
+<element ref="BUTTON" inputtag="ROW6" inputmask="0x8">
+    <bounds x="178.16666666666666" y="33.55" width="4.5" height="4.5" />
+</element>
+<element ref="BUTTON" inputtag="ROW6" inputmask="0x10">
+    <bounds x="188.0" y="33.55" width="4.5" height="4.5" />
+</element>
+<element ref="BUTTON" inputtag="ROW8" inputmask="0x8">
+    <bounds x="212.7" y="33.55" width="4.5" height="4.5" />
+</element>
+<element ref="BUTTON" inputtag="ROW8" inputmask="0x4">
+    <bounds x="222.53333333333333" y="33.55" width="4.5" height="4.5" />
+</element>
+<element ref="BUTTON" inputtag="ROW8" inputmask="0x2">
+    <bounds x="232.36666666666665" y="33.55" width="4.5" height="4.5" />
+</element>
+<element ref="BUTTON" inputtag="ROW9" inputmask="0x10">
+    <bounds x="249.45000000000002" y="33.55" width="4.5" height="4.5" />
+</element>
+<element ref="BUTTON" inputtag="ROW8" inputmask="0x10">
+    <bounds x="264.75" y="33.55" width="4.5" height="4.5" />
+</element>
+<element ref="BUTTON" inputtag="ROW6" inputmask="0x4">
+    <bounds x="158.5" y="48.949999999999996" width="4.5" height="4.5" />
+</element>
+<element ref="BUTTON" inputtag="ROW2" inputmask="0x10">
+    <bounds x="168.33333333333334" y="48.949999999999996" width="4.5" height="4.5" />
+</element>
+<element ref="BUTTON" inputtag="ROW7" inputmask="0x8">
+    <bounds x="178.16666666666666" y="48.949999999999996" width="4.5" height="4.5" />
+</element>
+<element ref="BUTTON" inputtag="ROW7" inputmask="0x10">
+    <bounds x="188.0" y="48.949999999999996" width="4.5" height="4.5" />
+</element>
+<element ref="BUTTON" inputtag="ROW1" inputmask="0x2">
+    <bounds x="251.0" y="101.75" width="4.5" height="4.5" />
+</element>
+<element ref="BUTTON" inputtag="ROW1" inputmask="0x1">
+    <bounds x="261.0" y="101.75" width="4.5" height="4.5" />
+</element>
+<element ref="BUTTON" inputtag="ROW9" inputmask="0x4">
+    <bounds x="248.95" y="83.5" width="6.6" height="5.75" />
+</element>
+<element ref="BUTTON" inputtag="ROW9" inputmask="0x8">
+    <bounds x="248.95" y="77.75" width="6.6" height="5.75" />
+</element>
+<element ref="BUTTON" inputtag="ROW9" inputmask="0x1">
+    <bounds x="260.55" y="83.5" width="6.6" height="5.75" />
+</element>
+<element ref="BUTTON" inputtag="ROW9" inputmask="0x2">
+    <bounds x="260.55" y="77.75" width="6.6" height="5.75" />
+</element>
+<element ref="BUTTON" inputtag="ROW0" inputmask="0x1">
+    <bounds x="272.15" y="83.5" width="6.6" height="5.75" />
+</element>
+<element ref="BUTTON" inputtag="ROW0" inputmask="0x2">
+    <bounds x="272.15" y="77.75" width="6.6" height="5.75" />
+</element>
+<element ref="BUTTON" inputtag="ROW0" inputmask="0x8">
+    <bounds x="161.95" y="104" width="6.6" height="5.75" />
+</element>
+<element ref="BUTTON" inputtag="ROW0" inputmask="0x10">
+    <bounds x="161.95" y="98.25" width="6.6" height="5.75" />
+</element>
+<element ref="BUTTON" inputtag="ROW1" inputmask="0x8">
+    <bounds x="193.95" y="104" width="6.6" height="5.75" />
+</element>
+<element ref="BUTTON" inputtag="ROW1" inputmask="0x10">
+    <bounds x="193.95" y="98.25" width="6.6" height="5.75" />
+</element>
+<element ref="LED" name="FP_LED-1">
+    <bounds x="264.75" y="12.0" width="6" height="4" />
+</element>
+<element ref="LED" name="FP_LED11">
+    <bounds x="264.75" y="16.0" width="6" height="4" />
+</element>
+<element ref="LED" name="FP_LED23">
+    <bounds x="264.75" y="20.0" width="6" height="4" />
+</element>
+<element ref="LED" name="FP_LED10">
+    <bounds x="264.75" y="24.0" width="6" height="4" />
+</element>
+<element ref="LED" name="FP_LED15">
+    <bounds x="249.25" y="44.0" width="6" height="4" />
+</element>
+<element ref="LED" name="FP_LED14">
+    <bounds x="249.25" y="48.0" width="6" height="4" />
+</element>
+<element ref="LED" name="FP_LED13">
+    <bounds x="249.25" y="52.0" width="6" height="4" />
+</element>
+<element ref="LED" name="FP_LED12">
+    <bounds x="249.25" y="56.0" width="6" height="4" />
+</element>
+<element ref="LED" name="FP_LED16">
+    <bounds x="249.25" y="64.0" width="6" height="4" />
+</element>
+<element ref="LED" name="FP_LED17">
+    <bounds x="249.25" y="68.0" width="6" height="4" />
+</element>
+<element ref="LED" name="FP_LED24">
+    <bounds x="260.85" y="44.0" width="6" height="4" />
+</element>
+<element ref="LED" name="FP_LED25">
+    <bounds x="260.85" y="48.0" width="6" height="4" />
+</element>
+<element ref="LED" name="FP_LED26">
+    <bounds x="260.85" y="52.0" width="6" height="4" />
+</element>
+<element ref="LED" name="FP_LED27">
+    <bounds x="260.85" y="56.0" width="6" height="4" />
+</element>
+<element ref="LED" name="FP_LED28">
+    <bounds x="260.85" y="60.0" width="6" height="4" />
+</element>
+<element ref="LED" name="FP_LED29">
+    <bounds x="260.85" y="64.0" width="6" height="4" />
+</element>
+<element ref="LED" name="FP_LED18">
+    <bounds x="272.45" y="44.0" width="6" height="4" />
+</element>
+<element ref="LED" name="FP_LED19">
+    <bounds x="272.45" y="48.0" width="6" height="4" />
+</element>
+<element ref="LED" name="FP_LED20">
+    <bounds x="272.45" y="52.0" width="6" height="4" />
+</element>
+<element ref="LED" name="FP_LED21">
+    <bounds x="272.45" y="56.0" width="6" height="4" />
+</element>
+<element ref="LED" name="FP_LED22">
+    <bounds x="272.45" y="60.0" width="6" height="4" />
+</element>
+<element ref="LED" name="FP_LED0">
+    <bounds x="151.25" y="92.0" width="6" height="4" />
+</element>
+<element ref="LED" name="FP_LED1">
+    <bounds x="151.25" y="96.0" width="6" height="4" />
+</element>
+<element ref="LED" name="FP_LED2">
+    <bounds x="151.25" y="100.0" width="6" height="4" />
+</element>
+<element ref="LED" name="FP_LED3">
+    <bounds x="151.25" y="104.0" width="6" height="4" />
+</element>
+<element ref="LED" name="FP_LED4">
+    <bounds x="151.25" y="108.0" width="6" height="4" />
+</element>
+<element ref="LED" name="FP_LED5">
+    <bounds x="183.25" y="92.0" width="6" height="4" />
+</element>
+<element ref="LED" name="FP_LED6">
+    <bounds x="183.25" y="96.0" width="6" height="4" />
+</element>
+<element ref="LED" name="FP_LED7">
+    <bounds x="183.25" y="100.0" width="6" height="4" />
+</element>
+<element ref="LED" name="FP_LED8">
+    <bounds x="183.25" y="104.0" width="6" height="4" />
+</element>
+<element ref="LED" name="FP_LED9">
+    <bounds x="183.25" y="108.0" width="6" height="4" />
+</element>
 
-        <repeat count="32">
-            <param name="count" start="0" increment="1" />
-            <param name="x" start="0" increment="4" />
-            <element ref="led" name="FP_LED~count~">
-                <bounds x="~x~" y="32" width="4" height="4" />
-            </element>
-        </repeat>
-
-        <element ref="CPL_UP" inputtag="ROW0" inputmask="0x10">
-            <bounds x="0" y="64" width="20" height="10" />
-        </element>
-        <element ref="CPL_DN" inputtag="ROW0" inputmask="0x08">
-            <bounds x="0" y="74" width="20" height="10" />
-        </element>
-
-        <element ref="CPL_UP" inputtag="ROW1" inputmask="0x10">
-            <bounds x="20" y="64" width="20" height="10" />
-        </element>
-        <element ref="CPL_DN" inputtag="ROW1" inputmask="0x08">
-            <bounds x="20" y="74" width="20" height="10" />
-        </element>
-        <!-- CH_1 -->
-        <element ref="BUTTON" inputtag="ROW6" inputmask="0x01">
-            <bounds x="255.76675" y="50.865398" width="7.4830184" height="7.5130167" />
-        </element>
-        <!-- CH_2 -->
-        <element ref="BUTTON" inputtag="ROW6" inputmask="0x02">
-            <bounds x="271.641754" y="50.865398" width="7.4830184" height="7.5130167" />
-        </element>
-        <!-- CH_3 -->
-        <element ref="BUTTON" inputtag="ROW6" inputmask="0x08">
-            <bounds x="287.516758" y="50.865398" width="7.4830184" height="7.5130167" />
-        </element>
-        <!-- CH_4 -->
-        <element ref="BUTTON" inputtag="ROW6" inputmask="0x10">
-            <bounds x="303.39176199999997" y="50.865398" width="7.4830184" height="7.5130167" />
-        </element>
-
-        <!-- DELTA_V -->
-        <element ref="BUTTON" inputtag="ROW8" inputmask="0x08">
-            <bounds x="344.66679999999997" y="50.865398" width="7.4830184" height="7.5130167" />
-        </element>
-        <!-- DELTA_T -->
-        <element ref="BUTTON" inputtag="ROW8" inputmask="0x04">
-            <bounds x="360.54184" y="50.865398" width="7.4830184" height="7.5130167" />
-        </element>
-        <!-- TRACKING -->
-        <element ref="BUTTON" inputtag="ROW8" inputmask="0x02">
-            <bounds x="376.41694" y="50.865398" width="7.4830184" height="7.5130167" />
-        </element>
-
-        <!-- A_B_TRIG -->
-        <element ref="BUTTON" inputtag="ROW9" inputmask="0x10">
-            <bounds x="402.87544" y="50.865398" width="7.4830184" height="7.5130167" />
-        </element>
-
-        <!-- SLOPE -->
-        <element ref="BUTTON" inputtag="ROW8" inputmask="0x10">
-            <bounds x="451.02991" y="50.865398" width="7.4830184" height="7.5130167" />
-        </element>
-
-
-        <!-- ADD -->
-        <element ref="BUTTON" inputtag="ROW6" inputmask="0x04">
-            <bounds x="255.76675" y="75.207074" width="7.4830184" height="7.5130167" />
-        </element>
-        <!-- INVERT -->
-        <element ref="BUTTON" inputtag="ROW2" inputmask="0x10">
-            <bounds x="271.641754" y="75.207074" width="7.4830184" height="7.5130167" />
-        </element>
-        <!-- CHOP -->
-        <element ref="BUTTON" inputtag="ROW7" inputmask="0x08">
-            <bounds x="287.516758" y="75.207074" width="7.4830184" height="7.5130167" />
-        </element>
-        <!-- 20_MHZ_BW_LIMIT -->
-        <element ref="BUTTON" inputtag="ROW7" inputmask="0x10">
-            <bounds x="303.39176199999997" y="75.207074" width="7.4830184" height="7.5130167" />
-        </element>
-
->
-<!--
-    TODO(siggi): Hookup front panel LEDs.
-    TODO(siggi): Hookup a reset/power switch.
--->
     </view>
 </mamelayout>
