@@ -17,6 +17,269 @@ license:CC0
             <color red="0.5" green="0.5" blue="0.5" />
         </rect>
     </element>
+    <element name="SEC_DIV">
+    <image state="0x1f" statemask="0x1F">
+<data><![CDATA[<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+<rect x="44" y="0" width="10" height="15" style="fill:rgb(0,0,0)"
+transform="rotate(-167.14285714285714, 50, 50)" /></svg>]]></data>
+</image>
+
+<image state="0x1e" statemask="0x1F">
+<data><![CDATA[<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+<rect x="44" y="0" width="10" height="15" style="fill:rgb(0,0,0)"
+transform="rotate(-154.28571428571428, 50, 50)" /></svg>]]></data>
+</image>
+
+<image state="0x1c" statemask="0x1F">
+<data><![CDATA[<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+<rect x="44" y="0" width="10" height="15" style="fill:rgb(0,0,0)"
+transform="rotate(-141.42857142857142, 50, 50)" /></svg>]]></data>
+</image>
+
+<image state="0x1d" statemask="0x1F">
+<data><![CDATA[<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+<rect x="44" y="0" width="10" height="15" style="fill:rgb(0,0,0)"
+transform="rotate(-128.57142857142856, 50, 50)" /></svg>]]></data>
+</image>
+
+<image state="0x19" statemask="0x1F">
+<data><![CDATA[<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+<rect x="44" y="0" width="10" height="15" style="fill:rgb(0,0,0)"
+transform="rotate(-115.7142857142857, 50, 50)" /></svg>]]></data>
+</image>
+
+<image state="0x18" statemask="0x1F">
+<data><![CDATA[<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+<rect x="44" y="0" width="10" height="15" style="fill:rgb(0,0,0)"
+transform="rotate(-102.85714285714283, 50, 50)" /></svg>]]></data>
+</image>
+
+<image state="0x1a" statemask="0x1F">
+<data><![CDATA[<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+<rect x="44" y="0" width="10" height="15" style="fill:rgb(0,0,0)"
+transform="rotate(-89.99999999999997, 50, 50)" /></svg>]]></data>
+</image>
+
+<image state="0x1b" statemask="0x1F">
+<data><![CDATA[<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+<rect x="44" y="0" width="10" height="15" style="fill:rgb(0,0,0)"
+transform="rotate(-77.14285714285711, 50, 50)" /></svg>]]></data>
+</image>
+
+<image state="0x13" statemask="0x1F">
+<data><![CDATA[<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+<rect x="44" y="0" width="10" height="15" style="fill:rgb(0,0,0)"
+transform="rotate(-64.28571428571425, 50, 50)" /></svg>]]></data>
+</image>
+
+<image state="0x12" statemask="0x1F">
+<data><![CDATA[<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+<rect x="44" y="0" width="10" height="15" style="fill:rgb(0,0,0)"
+transform="rotate(-51.42857142857139, 50, 50)" /></svg>]]></data>
+</image>
+
+<image state="0x10" statemask="0x1F">
+<data><![CDATA[<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+<rect x="44" y="0" width="10" height="15" style="fill:rgb(0,0,0)"
+transform="rotate(-38.57142857142853, 50, 50)" /></svg>]]></data>
+</image>
+
+<image state="0x11" statemask="0x1F">
+<data><![CDATA[<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+<rect x="44" y="0" width="10" height="15" style="fill:rgb(0,0,0)"
+transform="rotate(-25.71428571428567, 50, 50)" /></svg>]]></data>
+</image>
+
+<image state="0x15" statemask="0x1F">
+<data><![CDATA[<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+<rect x="44" y="0" width="10" height="15" style="fill:rgb(0,0,0)"
+transform="rotate(-12.857142857142811, 50, 50)" /></svg>]]></data>
+</image>
+
+<image state="0x14" statemask="0x1F">
+<data><![CDATA[<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+<rect x="44" y="0" width="10" height="15" style="fill:rgb(0,0,0)"
+transform="rotate(4.618527782440651e-14, 50, 50)" /></svg>]]></data>
+</image>
+
+<image state="0x16" statemask="0x1F">
+<data><![CDATA[<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+<rect x="44" y="0" width="10" height="15" style="fill:rgb(0,0,0)"
+transform="rotate(12.857142857142904, 50, 50)" /></svg>]]></data>
+</image>
+
+<image state="0x17" statemask="0x1F">
+<data><![CDATA[<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+<rect x="44" y="0" width="10" height="15" style="fill:rgb(0,0,0)"
+transform="rotate(25.71428571428576, 50, 50)" /></svg>]]></data>
+</image>
+
+<image state="0x7" statemask="0x1F">
+<data><![CDATA[<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+<rect x="44" y="0" width="10" height="15" style="fill:rgb(0,0,0)"
+transform="rotate(38.57142857142862, 50, 50)" /></svg>]]></data>
+</image>
+
+<image state="0x6" statemask="0x1F">
+<data><![CDATA[<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+<rect x="44" y="0" width="10" height="15" style="fill:rgb(0,0,0)"
+transform="rotate(51.42857142857147, 50, 50)" /></svg>]]></data>
+</image>
+
+<image state="0x4" statemask="0x1F">
+<data><![CDATA[<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+<rect x="44" y="0" width="10" height="15" style="fill:rgb(0,0,0)"
+transform="rotate(64.28571428571433, 50, 50)" /></svg>]]></data>
+</image>
+
+<image state="0x5" statemask="0x1F">
+<data><![CDATA[<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+<rect x="44" y="0" width="10" height="15" style="fill:rgb(0,0,0)"
+transform="rotate(77.1428571428572, 50, 50)" /></svg>]]></data>
+</image>
+
+<image state="0x1" statemask="0x1F">
+<data><![CDATA[<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+<rect x="44" y="0" width="10" height="15" style="fill:rgb(0,0,0)"
+transform="rotate(90.00000000000006, 50, 50)" /></svg>]]></data>
+</image>
+
+<image state="0x0" statemask="0x1F">
+<data><![CDATA[<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+<rect x="44" y="0" width="10" height="15" style="fill:rgb(0,0,0)"
+transform="rotate(102.85714285714292, 50, 50)" /></svg>]]></data>
+</image>
+
+<image state="0x2" statemask="0x1F">
+<data><![CDATA[<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+<rect x="44" y="0" width="10" height="15" style="fill:rgb(0,0,0)"
+transform="rotate(115.71428571428578, 50, 50)" /></svg>]]></data>
+</image>
+
+<image state="0x3" statemask="0x1F">
+<data><![CDATA[<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+<rect x="44" y="0" width="10" height="15" style="fill:rgb(0,0,0)"
+transform="rotate(128.57142857142864, 50, 50)" /></svg>]]></data>
+</image>
+
+<image state="0xb" statemask="0x1F">
+<data><![CDATA[<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+<rect x="44" y="0" width="10" height="15" style="fill:rgb(0,0,0)"
+transform="rotate(141.4285714285715, 50, 50)" /></svg>]]></data>
+</image>
+
+<image state="0xa" statemask="0x1F">
+<data><![CDATA[<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+<rect x="44" y="0" width="10" height="15" style="fill:rgb(0,0,0)"
+transform="rotate(154.28571428571436, 50, 50)" /></svg>]]></data>
+</image>
+
+    </element>
+    <element name="VOLTS_DIV">
+    <image state="0xf" statemask="0x0F">
+<data><![CDATA[<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+<rect x="45" y="0" width="10" height="15" style="fill:rgb(0,0,0)"
+transform="rotate(-150, 50, 50)" /></svg>]]></data>
+</image>
+
+<image state="0xe" statemask="0x0F">
+<data><![CDATA[<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+<rect x="45" y="0" width="10" height="15" style="fill:rgb(0,0,0)"
+transform="rotate(-120, 50, 50)" /></svg>]]></data>
+</image>
+
+<image state="0xc" statemask="0x0F">
+<data><![CDATA[<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+<rect x="45" y="0" width="10" height="15" style="fill:rgb(0,0,0)"
+transform="rotate(-90, 50, 50)" /></svg>]]></data>
+</image>
+
+<image state="0xd" statemask="0x0F">
+<data><![CDATA[<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+<rect x="45" y="0" width="10" height="15" style="fill:rgb(0,0,0)"
+transform="rotate(-60, 50, 50)" /></svg>]]></data>
+</image>
+
+<image state="0x9" statemask="0x0F">
+<data><![CDATA[<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+<rect x="45" y="0" width="10" height="15" style="fill:rgb(0,0,0)"
+transform="rotate(-30, 50, 50)" /></svg>]]></data>
+</image>
+
+<image state="0x8" statemask="0x0F">
+<data><![CDATA[<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+<rect x="45" y="0" width="10" height="15" style="fill:rgb(0,0,0)"
+transform="rotate(0, 50, 50)" /></svg>]]></data>
+</image>
+
+<image state="0xa" statemask="0x0F">
+<data><![CDATA[<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+<rect x="45" y="0" width="10" height="15" style="fill:rgb(0,0,0)"
+transform="rotate(30, 50, 50)" /></svg>]]></data>
+</image>
+
+<image state="0xb" statemask="0x0F">
+<data><![CDATA[<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+<rect x="45" y="0" width="10" height="15" style="fill:rgb(0,0,0)"
+transform="rotate(60, 50, 50)" /></svg>]]></data>
+</image>
+
+<image state="0x3" statemask="0x0F">
+<data><![CDATA[<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+<rect x="45" y="0" width="10" height="15" style="fill:rgb(0,0,0)"
+transform="rotate(90, 50, 50)" /></svg>]]></data>
+</image>
+
+<image state="0x2" statemask="0x0F">
+<data><![CDATA[<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+<rect x="45" y="0" width="10" height="15" style="fill:rgb(0,0,0)"
+transform="rotate(120, 50, 50)" /></svg>]]></data>
+</image>
+
+<image state="0x0" statemask="0x0F">
+<data><![CDATA[<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+<rect x="45" y="0" width="10" height="15" style="fill:rgb(0,0,0)"
+transform="rotate(150, 50, 50)" /></svg>]]></data>
+</image>
+
+    </element>
     <element name="Bezel">
         <image>
             <data><![CDATA[<?xml version="1.0" encoding="UTF-8" standalone="no"?>
@@ -39,6 +302,12 @@ license:CC0
 <circle cx="191.25mm" cy="78mm" r="4.75mm"
         style="fill:rgb(255,255,255);stroke-width:0.5mm;stroke:rgb(0,0,0)"/>
 <circle cx="226.25mm" cy="78mm" r="14.1mm"
+        style="fill:rgb(255,255,255);stroke-width:0.1mm;stroke:rgb(0,0,0)"/>
+<circle cx="226.25mm" cy="78mm" r="10.4mm"
+        style="fill:rgb(255,255,255);stroke-width:0.5mm;stroke:rgb(0,0,0)"/>
+<circle cx="226.25mm" cy="78mm" r="4.75mm"
+        style="fill:rgb(255,255,255);stroke-width:0.5mm;stroke:rgb(0,0,0)"/>
+<circle cx="226.25mm" cy="78mm" r="9.95mm"
         style="fill:rgb(255,255,255);stroke-width:0.1mm;stroke:rgb(0,0,0)"/>
 <circle cx="226.25mm" cy="78mm" r="10.4mm"
         style="fill:rgb(255,255,255);stroke-width:0.5mm;stroke:rgb(0,0,0)"/>
@@ -425,6 +694,17 @@ license:CC0
 <element ref="LED" name="FP_LED9">
     <bounds x="183.25" y="108.0" width="6" height="4" />
 </element>
-
+<element ref="VOLTS_DIV" inputraw="yes" inputtag="ROW2" inputmask="0xf">
+    <bounds x="150.45" y="69.2" width="17.6" height="17.6" />
+</element>
+<element ref="VOLTS_DIV" inputraw="yes" inputtag="ROW3" inputmask="0xf">
+    <bounds x="182.45" y="69.2" width="17.6" height="17.6" />
+</element>
+<element ref="SEC_DIV" inputraw="yes" inputtag="ROW5" inputmask="0x1f">
+    <bounds x="212.1" y="63.85" width="28.3" height="28.3" />
+</element>
+<element ref="SEC_DIV" inputraw="yes" inputtag="ROW4" inputmask="0x1f">
+    <bounds x="216.25" y="68.0" width="20.0" height="20.0" />
+</element>
     </view>
 </mamelayout>
