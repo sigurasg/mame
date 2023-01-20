@@ -145,6 +145,7 @@ private:
 	// Front panel scanning.
 	//////////////////////////////////////////////////////////////////////
 	required_ioport_array<10> m_front_panel_rows;
+	required_ioport m_port_misc;
 
 	//////////////////////////////////////////////////////////////////////
 	// A5 board sample and hold state.
@@ -166,7 +167,8 @@ tek2465_state::tek2465_state(const machine_config& config, device_type type, con
 	m_front_panel_led_outputs(*this, "FP_LED%u", 0U),
 	m_character_rom(*this, "character_rom"),
 	m_screen(*this, "screen"),
-	m_front_panel_rows(*this, "ROW%u", 0) {
+	m_front_panel_rows(*this, "ROW%u", 0),
+	m_port_misc(*this, "MISC") {
 }
 
 void tek2465_state::tek2465(machine_config& config) {
@@ -559,9 +561,8 @@ uint8_t tek2465_state::u2456_r() {
 		}
 	}
 
-	// This is the no-cal value for the two MSBs.
-	constexpr uint8_t kNoCal = 0x80;
-	value |= kNoCal;
+	// The bits from SI and J501 come from here.
+	value |= m_port_misc->read();
 
 	// Select the bit as indicated by the current m_dac.w value.
 	return BIT(value, BIT(m_dac.w, 12, 3));
@@ -650,6 +651,14 @@ const static ioport_value VOLTS_DIV_REMAP_TABLE[11] = {
 };
 
 INPUT_PORTS_START(tek2465)
+	PORT_START("MISC")
+	PORT_DIPNAME(0xC0, 0x80, "J501")
+	PORT_DIPSETTING(0x80, "Run")
+	PORT_DIPSETTING(0x40, "Calibrate")
+	PORT_DIPNAME(0x20, 0x00, "SI")
+	PORT_DIPSETTING(0x00, "2465")
+	PORT_DIPSETTING(0x20, "2445")
+
 	// The front panel is ROW/COL scanned.
 	PORT_START("ROW0")
 	PORT_BIT( 0x01, IP_ACTIVE_LOW, IPT_KEYPAD) PORT_NAME("TRIG_CPL_DN")
