@@ -66,20 +66,28 @@ private:
 	void disp_seq_w(uint8_t data);
 
 	uint8_t attn_r();
+	void attn_w(uint8_t data);
 	uint8_t ch2_pa_r();
+	void ch2_pa_w(uint8_t data);
 	uint8_t ch1_pa_r();
+	void ch1_pa_w(uint8_t data);
 	uint8_t b_swp_r();
+	void b_swp_w(uint8_t data);
 	uint8_t a_swp_r();
+	void a_swp_w(uint8_t data);
 	uint8_t b_trig_r();
+	void b_trig_w(uint8_t data);
 	uint8_t a_trig_r();
+	void a_trig_w(uint8_t data);
 	uint8_t trig_stat_strb_r();
+	void trig_stat_strb_w(uint8_t data);
 
 	void dmux_0_update_dac();
 
 	// Returns a one-bit value from this multiplexer.
 	uint8_t u2456_r();
 
-	TIMER_CALLBACK_MEMBER(device_timer);
+	TIMER_CALLBACK_MEMBER(interrupt_timer);
 
 	// Temporarily displays the OSD only.
 	uint32_t screen_update(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &rect);
@@ -191,57 +199,46 @@ void tek2465_state::debug_commands(const std::vector<std::string_view> &params) 
 	con.printf("\tU2418 INH: %i\n", BIT(m_port_2, 3));
 	con.printf("\tU2408 INH: %i\n", BIT(m_port_2, 4));
 	con.printf("\tTRIG LED: %i\n", BIT(m_port_2, 5));
+
 	con.printf("LEDs: 0x%04X\n", m_front_panel_leds);
-static const char* fp_led_names[] = {
-	"CH1_AC_CPL",
-	"CH1_GND1_CPL",
-	"CH1_DC_CPL",
-	"CH1_GND2_CPL",
-	"CH1_50_CPL",
-
-	"CH2_AC_CPL",
-	"CH2_GND1_CPL",
-	"CH2_DC1_CPL",
-	"CH2_GND2_CPL",
-	"CH2_50_CPL",
-
-	"SLOPE_NEG",
-	"READY",
-
-	"SQL_SEQ",
-	"NORM",
-	"AUTO",
-	"AUTO_LVL",
-	"RUN",
-	"TRIG",
-
-	"TRIG_DC_CPL",
-	"TRIG_NOISE_REJ_CPL",
-	"TRIG_HF_REJ_CPL",
-	"TRIG_LF_REJ_CPL",
-	"TRIG_AC_CPL",
-
-	"SLOPE_POS",
-
-	"VERT",
-	"CH1",
-	"CH2",
-	"CH3",
-	"CH4",
-	"LINE",
-
-	"UNUSED1",
-	"UNUSED2",
-};
-	static_assert(sizeof(fp_led_names)/ sizeof(fp_led_names[0]) == 32);
-	for (size_t i = 0; i < 32; ++i) {
-		if (BIT(m_front_panel_leds, i) == 0)
-			con.printf("LED: %s\n", fp_led_names[i]);
-	}
 
 	con.printf("DAC: 0x%02X\n", m_dac.w);
 
 	con.printf("DS SHIFT: 0x%08X\n", m_ds_shift);
+	con.printf("  MS10-14: 0x%02X\n", bitswap(m_ds_shift, 4, 3, 2, 1, 0));
+	con.printf("  DS10-14: 0x%02X\n", bitswap(m_ds_shift, 5, 6, 7, 8, 9));
+	con.printf("  TH0-4: 0x%02X\n", bitswap(m_ds_shift, 10, 11, 12, 13, 14));
+	con.printf("  EXT-SWP: %X\n", BIT(m_ds_shift, 15));
+	con.printf("  DL-END_MAIN: %X\n", BIT(m_ds_shift, 16));
+	con.printf("  DISP-BLANK: %X\n", BIT(m_ds_shift, 17));
+	con.printf("  ATS0: %X\n", BIT(m_ds_shift, 18));
+	con.printf("  ATS1: %X\n", BIT(m_ds_shift, 19));
+	con.printf("  ICT: %X\n", BIT(m_ds_shift, 20));
+	con.printf("  ICS: %X\n", BIT(m_ds_shift, 21));
+	con.printf("  Single Sequence: %X\n", BIT(m_ds_shift, 22));
+	con.printf("  Include VDS1: %X\n", BIT(m_ds_shift, 23));
+	con.printf("  Include VDS2: %X\n", BIT(m_ds_shift, 24));
+	con.printf("  Include VDS12: %X\n", BIT(m_ds_shift, 25));
+	con.printf("  Include VDS3: %X\n", BIT(m_ds_shift, 26));
+	con.printf("  Include VDS4: %X\n", BIT(m_ds_shift, 27));
+	con.printf("  MX: %X\n", BIT(m_ds_shift, 28));
+	con.printf("  MD: %X\n", BIT(m_ds_shift, 29));
+	con.printf("  MM: %X\n", BIT(m_ds_shift, 30));
+	con.printf("  HDS1: %X\n", BIT(m_ds_shift, 31));
+	con.printf("  HDS2: %X\n", BIT(m_ds_shift, 32));
+	con.printf("  HDS3: %X\n", BIT(m_ds_shift, 33));
+	con.printf("  HDS5: %X\n", BIT(m_ds_shift, 34));
+	con.printf("  HDS6: %X\n", BIT(m_ds_shift, 35));
+	con.printf("  HDS7: %X\n", BIT(m_ds_shift, 36));
+	con.printf("  Slave delta: %X\n", BIT(m_ds_shift, 37));
+	con.printf("  VT0-2: 0x%02X\n", bitswap(m_ds_shift, 40, 39, 38));
+	con.printf("  CSR0-2M: 0x%02X\n", bitswap(m_ds_shift, 43, 42, 41));
+	con.printf("  CSR0-2D: 0x%02X\n", bitswap(m_ds_shift, 46, 45, 44));
+	con.printf("  Counter test: %X\n", BIT(m_ds_shift, 47));
+	con.printf("  CP0-4: 0x%02X\n", bitswap(m_ds_shift, 52, 52, 50, 49, 48));
+	con.printf("  CHL: %X\n", BIT(m_ds_shift, 53));
+	con.printf("  CHM: %X\n", BIT(m_ds_shift, 54));
+
 
 	con.printf("Next IRQ: %ss\n", m_irq_timer->remaining().to_string().c_str());
 }
@@ -273,7 +270,7 @@ void tek2465_state::machine_start() {
 	save_item(NAME(m_dly_ref_0));
 	save_item(NAME(m_dly_ref_1));
 
-	m_irq_timer = timer_alloc(FUNC(tek2465_state::device_timer), this);
+	m_irq_timer = timer_alloc(FUNC(tek2465_state::interrupt_timer), this);
 }
 
 void tek2465_state::machine_reset() {
@@ -305,37 +302,37 @@ void tek2465_state::tek2465_map(address_map& map) {
 	map(0x0980, 0x09BF).mirror(0x600).w(FUNC(tek2465_state::port_2_w));
 
 	// UNUSED
-	map(0x09c0, 0x09c0).mirror(0x600).unmaprw();
+	map(0x09C0, 0x09C0).mirror(0x630).unmaprw();
 	// DMUX0_OFF
-	map(0x09c1, 0x09c1).mirror(0x600).rw(FUNC(tek2465_state::dmux_0_off_r), FUNC(tek2465_state::dmux_0_off_w));
+	map(0x09C1, 0x09C1).mirror(0x630).rw(FUNC(tek2465_state::dmux_0_off_r), FUNC(tek2465_state::dmux_0_off_w));
 	// DMUX0_ON
-	map(0x09c2, 0x09c2).mirror(0x600).rw(FUNC(tek2465_state::dmux_0_on_r), FUNC(tek2465_state::dmux_0_on_w));
+	map(0x09C2, 0x09C2).mirror(0x630).rw(FUNC(tek2465_state::dmux_0_on_r), FUNC(tek2465_state::dmux_0_on_w));
 	// PORT_3_IN
-	map(0x09c3, 0x09c3).mirror(0x600).r(FUNC(tek2465_state::port3_r));
+	map(0x09C3, 0x09C3).mirror(0x630).r(FUNC(tek2465_state::port3_r));
 	// DMUX1_OFF
-	map(0x09c4, 0x09c4).mirror(0x600).rw(FUNC(tek2465_state::dmux_1_off_r), FUNC(tek2465_state::dmux_1_off_w));
+	map(0x09C4, 0x09C4).mirror(0x630).rw(FUNC(tek2465_state::dmux_1_off_r), FUNC(tek2465_state::dmux_1_off_w));
 	// DMUX1_ON
-	map(0x09c5, 0x09c5).mirror(0x600).rw(FUNC(tek2465_state::dmux_1_on_r), FUNC(tek2465_state::dmux_1_on_w));
+	map(0x09C5, 0x09C5).mirror(0x630).rw(FUNC(tek2465_state::dmux_1_on_r), FUNC(tek2465_state::dmux_1_on_w));
 	// LED_CLK
-	map(0x09c6, 0x09c6).mirror(0x600).rw(FUNC(tek2465_state::led_r), FUNC(tek2465_state::led_w));
+	map(0x09C6, 0x09C6).mirror(0x630).rw(FUNC(tek2465_state::led_r), FUNC(tek2465_state::led_w));
 	// DISP_SEC_CLK
-	map(0x09c7, 0x09c7).mirror(0x600).rw(FUNC(tek2465_state::disp_seq_r), FUNC(tek2465_state::disp_seq_w));
+	map(0x09C7, 0x09C7).mirror(0x630).rw(FUNC(tek2465_state::disp_seq_r), FUNC(tek2465_state::disp_seq_w));
 	// ATTN_CLK
-	map(0x09c8, 0x09c8).mirror(0x600).r(FUNC(tek2465_state::attn_r));
+	map(0x09C8, 0x09C8).mirror(0x630).rw(FUNC(tek2465_state::attn_r), FUNC(tek2465_state::attn_w));
 	// CH_2_PA_CLK
-	map(0x09c9, 0x09c9).mirror(0x600).r(FUNC(tek2465_state::ch2_pa_r));
+	map(0x09C9, 0x09C9).mirror(0x630).rw(FUNC(tek2465_state::ch2_pa_r), FUNC(tek2465_state::ch2_pa_w));
 	// CH_1_PA_CLK
-	map(0x09cA, 0x09cA).mirror(0x600).r(FUNC(tek2465_state::ch1_pa_r));
+	map(0x09CA, 0x09CA).mirror(0x630).rw(FUNC(tek2465_state::ch1_pa_r), FUNC(tek2465_state::ch1_pa_w));
 	// B_SWP_CLK
-	map(0x09cB, 0x09cB).mirror(0x600).r(FUNC(tek2465_state::b_swp_r));
+	map(0x09CB, 0x09CB).mirror(0x630).rw(FUNC(tek2465_state::b_swp_r), FUNC(tek2465_state::b_swp_w));
 	// A_SWP_CLK
-	map(0x09cC, 0x09cC).mirror(0x600).r(FUNC(tek2465_state::a_swp_r));
+	map(0x09CC, 0x09CC).mirror(0x630).rw(FUNC(tek2465_state::a_swp_r), FUNC(tek2465_state::a_swp_w));
 	// B_TRIG_CLK
-	map(0x09cD, 0x09cD).mirror(0x600).r(FUNC(tek2465_state::b_trig_r));
+	map(0x09CD, 0x09CD).mirror(0x630).rw(FUNC(tek2465_state::b_trig_r), FUNC(tek2465_state::b_trig_w));
 	// A_TRIG_CLK
-	map(0x09cE, 0x09cE).mirror(0x600).r(FUNC(tek2465_state::a_trig_r));
+	map(0x09CE, 0x09CE).mirror(0x630).rw(FUNC(tek2465_state::a_trig_r), FUNC(tek2465_state::a_trig_w));
 	// TRIG_STAT_STRB
-	map(0x09cF, 0x09cF).mirror(0x600).r(FUNC(tek2465_state::trig_stat_strb_r));
+	map(0x09CF, 0x09CF).mirror(0x630).rw(FUNC(tek2465_state::trig_stat_strb_r), FUNC(tek2465_state::trig_stat_strb_w));
 
 	// TODO(siggi): Options from 0x1000-0x7FFF.
 	map(0x1000, 0x7FFF).unmaprw();
@@ -410,14 +407,10 @@ void tek2465_state::ros_2_w(uint8_t data) {
 		// If bit 2 of the ROS2 register is set, read back the RAM
 		// contents to the upper byte of the ROS1 register.
 		m_ros_1.b.h = bitswap(m_ros_ram[address], 0, 1, 2, 3, 4, 5, 6, 7);
-
-		LOG("ROS read 0x%02X from 0x%02X\n", m_ros_ram[address], address);
 	} else if (!BIT(m_ros_2_latch, 3)) {
 		// On a write with the mode set right, write through to the
 		// character RAM.
 		m_ros_ram[address] = bitswap(m_ros_1.b.h, 0, 1, 2, 3, 4, 5, 6, 7);
-
-		LOG("ROS write 0x%02X to 0x%02X\n", m_ros_ram[address], address);
 	}
 }
 
@@ -496,7 +489,7 @@ void tek2465_state::led_w(uint8_t data) {
 
 uint8_t tek2465_state::disp_seq_r() {
 	m_ds_shift >>= 1;
-	m_ds_shift |= static_cast<uint64_t>(BIT(m_port_2, 0)) << 55;
+	m_ds_shift |= static_cast<uint64_t>(BIT(m_port_2, 0)) << 54;
 	return 0x01;
 }
 
@@ -505,13 +498,36 @@ void tek2465_state::disp_seq_w(uint8_t data) {
 }
 
 uint8_t tek2465_state::attn_r() { return 0x01; }
+void tek2465_state::attn_w(uint8_t data) {}
 uint8_t tek2465_state::ch2_pa_r() { return 0x01; }
+void tek2465_state::ch2_pa_w(uint8_t data) {}
 uint8_t tek2465_state::ch1_pa_r() { return 0x01; }
+void tek2465_state::ch1_pa_w(uint8_t data) {}
 uint8_t tek2465_state::b_swp_r() { return 0x01; }
+void tek2465_state::b_swp_w(uint8_t data) {}
 uint8_t tek2465_state::a_swp_r() { return 0x01; }
+void tek2465_state::a_swp_w(uint8_t data) {}
 uint8_t tek2465_state::b_trig_r() { return 0x01; }
+void tek2465_state::b_trig_w(uint8_t data) {}
 uint8_t tek2465_state::a_trig_r() { return 0x01; }
-uint8_t tek2465_state::trig_stat_strb_r() { return 0x01; }
+void tek2465_state::a_trig_w(uint8_t data) {}
+uint8_t tek2465_state::trig_stat_strb_r() {
+	static uint64_t old_ds_shift = 0;
+
+	// The firmware is checking the trigger status.
+	// This is an opportune time to log any register
+	// changes.
+	if (m_ds_shift != old_ds_shift) {
+		old_ds_shift = m_ds_shift;
+		LOG("DS: 0x%08X\n", m_ds_shift);
+	}
+
+	return 0x01;
+}
+
+void tek2465_state::trig_stat_strb_w(uint8_t data) {
+	trig_stat_strb_r();
+}
 
 void tek2465_state::dmux_0_update_dac() {
 	if (m_mux_0_disable)
@@ -539,9 +555,6 @@ uint8_t tek2465_state::u2456_r() {
 		if (!BIT(m_dac.w, i)) {
 			++selected_rows;
 			value &= m_front_panel_rows[i]->read();
-
-			if (i == 4)
-				LOG("ROW4=0x%02X\n", m_front_panel_rows[4]->read());
 		}
 	}
 
@@ -549,18 +562,11 @@ uint8_t tek2465_state::u2456_r() {
 	constexpr uint8_t kNoCal = 0x80;
 	value |= kNoCal;
 
-#if 0
-	if (selected_rows != 1)
-		LOG("Selected FP rows: %d\n", selected_rows);
-
-	LOG("Output value: 0x%02X\n", value);
-#endif
-
 	// Select the bit as indicated by the current m_dac.w value.
 	return BIT(value, BIT(m_dac.w, 12, 3));
 }
 
-TIMER_CALLBACK_MEMBER(tek2465_state::device_timer) {
+TIMER_CALLBACK_MEMBER(tek2465_state::interrupt_timer) {
 	m_maincpu->set_input_line(M6800_IRQ_LINE, ASSERT_LINE);
 }
 
