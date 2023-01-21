@@ -32,7 +32,11 @@ public:
 
 private:
 	void debug_init();
-	void debug_commands(const std::vector<std::string_view> &params);
+
+	void debug_ds(const std::vector<std::string_view> &params);
+	void debug_port1(const std::vector<std::string_view> &params);
+	void debug_port2(const std::vector<std::string_view> &params);
+
 
 	void machine_start() override;
 	void machine_reset() override;
@@ -210,25 +214,14 @@ void tek2465_state::tek2465(machine_config& config) {
 void tek2465_state::debug_init() {
 	if (machine().debug_flags & DEBUG_FLAG_ENABLED) {
 		using namespace std::placeholders;
-		machine().debugger().console().register_command("tek", CMDFLAG_CUSTOM_HELP, 0, 0, std::bind(&tek2465_state::debug_commands, this, _1));
+		machine().debugger().console().register_command("ds", CMDFLAG_CUSTOM_HELP, 0, 0, std::bind(&tek2465_state::debug_ds, this, _1));
+		machine().debugger().console().register_command("port1", CMDFLAG_CUSTOM_HELP, 0, 0, std::bind(&tek2465_state::debug_port1, this, _1));
+		machine().debugger().console().register_command("port2", CMDFLAG_CUSTOM_HELP, 0, 0, std::bind(&tek2465_state::debug_port2, this, _1));
 	}
 }
 
-void tek2465_state::debug_commands(const std::vector<std::string_view> &params) {
+void tek2465_state::debug_ds(const std::vector<std::string_view> &params) {
 	debugger_console &con = machine().debugger().console();
-
-	con.printf("PORT1: 0x%02X\n", m_port_1);
-	con.printf("PORT2: 0x%02X\n", m_port_2);
-	con.printf("\tLED DATA: %i\n", BIT(m_port_2, 0));
-	con.printf("\tOEACLK: %i\n", BIT(m_port_2, 1));
-	con.printf("\tATTN STRB: %i\n", BIT(m_port_2, 2));
-	con.printf("\tU2418 INH: %i\n", BIT(m_port_2, 3));
-	con.printf("\tU2408 INH: %i\n", BIT(m_port_2, 4));
-	con.printf("\tTRIG LED: %i\n", BIT(m_port_2, 5));
-
-	con.printf("LEDs: 0x%04X\n", m_front_panel_leds);
-
-	con.printf("DAC: 0x%02X\n", m_dac.w);
 
 	con.printf("DS SHIFT: 0x%08X\n", m_ds_shift);
 	con.printf("  MS10-14: 0x%02X\n", bitswap(m_ds_shift, 4, 3, 2, 1, 0));
@@ -264,10 +257,27 @@ void tek2465_state::debug_commands(const std::vector<std::string_view> &params) 
 	con.printf("  CP0-4: 0x%02X\n", bitswap(m_ds_shift, 52, 52, 50, 49, 48));
 	con.printf("  CHL: %X\n", BIT(m_ds_shift, 53));
 	con.printf("  CHM: %X\n", BIT(m_ds_shift, 54));
-
-
-	con.printf("Next IRQ: %ss\n", m_irq_timer->remaining().to_string().c_str());
 }
+
+void tek2465_state::debug_port1(const std::vector<std::string_view> &params) {
+	debugger_console &con = machine().debugger().console();
+
+	con.printf("PORT1: 0x%02X\n", m_port_1);
+}
+
+void tek2465_state::debug_port2(const std::vector<std::string_view> &params) {
+	debugger_console &con = machine().debugger().console();
+
+	con.printf("PORT2: 0x%02X\n", m_port_2);
+	con.printf("  LED DATA: %i\n", BIT(m_port_2, 0));
+	con.printf("  OEACLK: %i\n", BIT(m_port_2, 1));
+	con.printf("  ATTN STRB: %i\n", BIT(m_port_2, 2));
+	con.printf("  U2418 INH: %i\n", BIT(m_port_2, 3));
+	con.printf("  U2408 INH: %i\n", BIT(m_port_2, 4));
+	con.printf("  TRIG LED: %i\n", BIT(m_port_2, 5));
+
+}
+
 
 void tek2465_state::machine_start() {
 	debug_init();
@@ -593,17 +603,17 @@ uint8_t tek2465_state::u2456_r() {
 }
 
 bool tek2465_state::comp_r() {
-	// Bits 3/4 of port 2 select the MUX. If neither is set, there's
+	// Bits 3/4 of port 2 inhibit the MUXes. If both is set, there's
 	// no comparison, so just return a constant.
-	if (BIT(m_port_2, 3, 2) == 0)
+	if (BIT(m_port_2, 3, 2) == 0x3)
 		return true;
 
 	// The 3 LSBs of the port 1 register select the analog port.
 	uint8_t index = BIT(m_port_1, 0, 3);
 
-	// Bits 3/4 of port 2 then select the MUX. Here we ignore
-	// bit 3, as presumably it's an error to enable both MUXes.
-	if (BIT(m_port_2, 4))
+	// Both inhibit bits shouldn't be cleared at the same time,
+	// so just read bit 3 here.
+	if (BIT(m_port_2, 3) == 0)
 		index += 8;
 
 	constexpr float scanned_range = 1.25 + 1.36;
