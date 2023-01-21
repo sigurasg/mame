@@ -87,6 +87,9 @@ private:
 	// Returns a one-bit value from this multiplexer.
 	uint8_t u2456_r();
 
+	// Returns true if selected analog value is less than DAC value.
+	bool comp_r();
+
 	TIMER_CALLBACK_MEMBER(interrupt_timer);
 
 	// Temporarily displays the OSD only.
@@ -146,6 +149,7 @@ private:
 	//////////////////////////////////////////////////////////////////////
 	required_ioport_array<10> m_front_panel_rows;
 	required_ioport m_port_misc;
+	required_ioport_array<16> m_analog_scanned;
 
 	//////////////////////////////////////////////////////////////////////
 	// A5 board sample and hold state.
@@ -160,6 +164,25 @@ private:
 	uint16_t m_dly_ref_1 = 0;
 };
 
+constexpr std::array<const char*, 16> ANALOG_SCANNED_TAGS = {
+	"HOLDOFF",
+	"TRIG_LEVEL",
+	"HORIZ_VAR",
+	"HORIZ_POS",
+	"DELTA_B",
+	"DELTA_A",
+	"DLY_A",
+	"DLY_B",
+	"CH1_VAR",
+	"CH2_VAR",
+	"CH1_OVL",
+	"CH2_OVL",
+	"CH1_PRB",
+	"CH2_PRB",
+	"CH3_PRB",
+	"CH4_PRB",
+};
+
 tek2465_state::tek2465_state(const machine_config& config, device_type type, const char* tag) :
 	driver_device(config, type, tag),
 	m_maincpu(*this, "maincpu"),
@@ -168,7 +191,8 @@ tek2465_state::tek2465_state(const machine_config& config, device_type type, con
 	m_character_rom(*this, "character_rom"),
 	m_screen(*this, "screen"),
 	m_front_panel_rows(*this, "ROW%u", 0),
-	m_port_misc(*this, "MISC") {
+	m_port_misc(*this, "MISC"),
+	m_analog_scanned(*this, ANALOG_SCANNED_TAGS) {
 }
 
 void tek2465_state::tek2465(machine_config& config) {
@@ -440,7 +464,7 @@ uint8_t tek2465_state::port3_r() {
 	uint8_t ret = 0;
 
 	ret |= 0x01 << 0; // TODO(siggi): Implement TSO.
-	// ret |= comp_r();  // TODO(siggi): Implement comparator.
+	ret |= (comp_r() ? 0x02 : 0x00);
 	ret |= BIT(m_ros_1.w, 15) << 2;
 	ret |= 0x00 << 3;  // TODO(siggi): Implement RO ON.
 
@@ -568,6 +592,35 @@ uint8_t tek2465_state::u2456_r() {
 	return BIT(value, BIT(m_dac.w, 12, 3));
 }
 
+bool tek2465_state::comp_r() {
+	// Bits 3/4 of port 2 select the MUX. If neither is set, there's
+	// no comparison, so just return a constant.
+	if (BIT(m_port_2, 3, 2) == 0)
+		return true;
+
+	// The 3 LSBs of the port 1 register select the analog port.
+	uint8_t index = BIT(m_port_1, 0, 3);
+
+	// Bits 3/4 of port 2 then select the MUX. Here we ignore
+	// bit 3, as presumably it's an error to enable both MUXes.
+	if (BIT(m_port_2, 4))
+		index += 8;
+
+	constexpr float scanned_range = 1.25 + 1.36;
+	constexpr float scanned_base = -1.25;
+	// Scale the scanned value to the pot voltage.
+	const float scanned_volts =
+		(m_analog_scanned[index]->read() / 256.0) * scanned_range + scanned_base;
+
+	constexpr float dac_base = 1.36;
+	const float dac_volts = dac_base - (BIT(m_dac.w, 0, 12) / 4096.0) * 4e-3 * 681.0;
+
+	bool out = dac_volts >= scanned_volts;
+	LOG("Scanned[%s]: %fV, DAC: %fV, out: %s\n", m_analog_scanned[index].finder_tag(),
+			scanned_volts, dac_volts, out ? "true" : "false");
+	return out;
+}
+
 TIMER_CALLBACK_MEMBER(tek2465_state::interrupt_timer) {
 	m_maincpu->set_input_line(M6800_IRQ_LINE, ASSERT_LINE);
 }
@@ -658,6 +711,7 @@ INPUT_PORTS_START(tek2465)
 	PORT_DIPNAME(0x20, 0x00, "SI")
 	PORT_DIPSETTING(0x00, "2465")
 	PORT_DIPSETTING(0x20, "2445")
+	// TODO(siggi): Model A5P503 to enable the NOP kernel test.
 
 	// The front panel is ROW/COL scanned.
 	PORT_START("ROW0")
@@ -736,15 +790,56 @@ INPUT_PORTS_START(tek2465)
 	PORT_START("ROW10")
 	PORT_BIT( 0x1F, IP_ACTIVE_LOW, IPT_UNUSED)
 
+	// All the FP pots that are scanned.
+	PORT_START("HORIZ_POS")
+	PORT_BIT( 0xFF, 0x00, IPT_DIAL ) PORT_SENSITIVITY(16) PORT_NAME("HORIZ_POS")
 
-	// TODO(siggi): Model all pots.
+	PORT_START("DLY_A")
+	PORT_BIT( 0xFF, 0x00, IPT_DIAL ) PORT_SENSITIVITY(16) PORT_NAME("DLY_A")
+
+	PORT_START("DLY_B")
+	PORT_BIT( 0xFF, 0x00, IPT_DIAL ) PORT_SENSITIVITY(16) PORT_NAME("DLY_B")
+
+	PORT_START("DELTA_A")
+	PORT_BIT( 0xFF, 0x00, IPT_DIAL ) PORT_SENSITIVITY(16) PORT_NAME("DELTA_A")
+
+	PORT_START("DELTA_B")
+	PORT_BIT( 0xFF, 0x00, IPT_DIAL ) PORT_SENSITIVITY(16) PORT_NAME("DELTA_B")
+
+	PORT_START("TRIG_LEVEL")
+	PORT_BIT( 0xFF, 0x00, IPT_DIAL ) PORT_SENSITIVITY(16) PORT_NAME("TRIG_LEVEL")
 
 	PORT_START("HOLDOFF")
-	PORT_BIT( 0xFF, 0x00, IPT_DIAL) PORT_SENSITIVITY(16) PORT_KEYDELTA(8)
+	PORT_BIT( 0xFF, 0x00, IPT_DIAL ) PORT_SENSITIVITY(16) PORT_NAME("HOLDOFF")
 
-	// TODO(siggi): Model jumpers as "DIP Switches".
-	// A5: P503 to enable the NOP kernel test.
-	// A5: P501 CAL/NO CAL jumper.
+	PORT_START("CH1_VAR")
+	PORT_BIT( 0xFF, 0x00, IPT_DIAL ) PORT_SENSITIVITY(16) PORT_NAME("CH1_VAR")
+
+	PORT_START("CH2_VAR")
+	PORT_BIT( 0xFF, 0x00, IPT_DIAL ) PORT_SENSITIVITY(16) PORT_NAME("CH2_VAR")
+
+	PORT_START("HORIZ_VAR")
+	PORT_BIT( 0xFF, 0x00, IPT_DIAL ) PORT_SENSITIVITY(16) PORT_NAME("HORIZ_VAR")
+
+	// All the A1 signals that are scanned.
+	PORT_START("CH1_OVL")
+	PORT_BIT( 0xFF, 0x00, IPT_DIAL ) PORT_SENSITIVITY(16) PORT_NAME("CH1_OVL")
+
+	PORT_START("CH2_OVL")
+	PORT_BIT( 0xFF, 0x00, IPT_DIAL ) PORT_SENSITIVITY(16) PORT_NAME("CH2_OVL")
+
+	PORT_START("CH1_PRB")
+	PORT_BIT( 0xFF, 0x00, IPT_DIAL ) PORT_SENSITIVITY(16) PORT_NAME("CH1_PRB")
+
+	PORT_START("CH2_PRB")
+	PORT_BIT( 0xFF, 0x00, IPT_DIAL ) PORT_SENSITIVITY(16) PORT_NAME("CH2_PRB")
+
+	PORT_START("CH3_PRB")
+	PORT_BIT( 0xFF, 0x00, IPT_DIAL ) PORT_SENSITIVITY(16) PORT_NAME("CH3_PRB")
+
+	PORT_START("CH4_PRB")
+	PORT_BIT( 0xFF, 0x00, IPT_DIAL ) PORT_SENSITIVITY(16) PORT_NAME("CH4_PRB")
+
 INPUT_PORTS_END
 
 ROM_START(tek2465)
