@@ -263,6 +263,10 @@ void tek2465_state::debug_port1(const std::vector<std::string_view> &params) {
 	debugger_console &con = machine().debugger().console();
 
 	con.printf("PORT1: 0x%02X\n", m_port_1);
+	con.printf("  EAROM MODE: 0x%02X\n", BIT(m_port_1, 0, 3));
+	con.printf("  EAROM CLK: %i\n", BIT(m_port_1, 3));
+	con.printf("  EAROM DATA: %i\n", BIT(m_port_1, 4));
+	con.printf("  PWR DOWN: %i\n", BIT(m_port_1, 4));
 }
 
 void tek2465_state::debug_port2(const std::vector<std::string_view> &params) {
