@@ -530,7 +530,7 @@ void tek2465_state::led_w(uint8_t data) {
 uint8_t tek2465_state::disp_seq_r() {
 	m_ds_shift <<= 1;
 	m_ds_shift |= BIT(m_port_2, 0);
-	m_ds_shift &= (static_cast<uint64_t>(1) << 55) - 1;
+	m_ds_shift = BIT(m_ds_shift, 0, 55);
 	return 0x01;
 }
 
