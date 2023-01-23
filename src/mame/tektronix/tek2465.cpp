@@ -37,7 +37,6 @@ private:
 	void debug_port1(const std::vector<std::string_view> &params);
 	void debug_port2(const std::vector<std::string_view> &params);
 
-
 	void machine_start() override;
 	void machine_reset() override;
 
@@ -127,6 +126,36 @@ private:
 	// The trigger status strobe. Maybe two bits?
 	// TODO(siggi): implement.
 	// uint8_t m_ds_tss = 0;
+
+	//////////////////////////////////////////////////////////////////////
+	// Sweep hybrid state.
+	// Each sweep hybrid conains one each
+	// - 203-0231-90 die
+	// - 203-0214-90 die
+	// plus some discrete components. The former of these contains a 7 bit
+	// shift register, which is modeled here.
+	//////////////////////////////////////////////////////////////////////
+	uint8_t m_swp_a_shift = 0;
+	uint8_t m_swp_b_shift = 0;
+
+	// Trigger hybrid state.
+	// The trigger hybrid contains two "203-0213-90" dies, one each for the
+	// A and B trigger. Each die contains a 7 bit shift register.
+	uint8_t m_trig_a_shift = 0;
+	uint8_t m_trig_b_shift = 0;
+
+	// Attenuator shift register.
+	// Various bits of this shift register are used for misc settings on
+	// the main board A1 as well.
+	uint16_t m_attn_shift = 0;
+
+	// Shift registers for the CH1/CH2 preamps.
+	// TODO(siggi): The length and function of these is unknown, although
+	//     it stands to reason that the preamps take care of 2/5 steppings.
+	//     This is likely not solely done through the analog variable gain
+	//     voltage, though that would be possible.
+	uint16_t m_p1_shift = 0;
+	uint16_t m_p2_shift = 0;
 
 	//////////////////////////////////////////////////////////////////////
 	// Readout state.
@@ -296,6 +325,17 @@ void tek2465_state::machine_start() {
 
 	save_item(NAME(m_ds_shift));
 
+	save_item(NAME(m_swp_a_shift));
+	save_item(NAME(m_swp_b_shift));
+
+	save_item(NAME(m_trig_a_shift));
+	save_item(NAME(m_trig_b_shift));
+
+	save_item(NAME(m_attn_shift));
+
+	save_item(NAME(m_p1_shift));
+	save_item(NAME(m_p2_shift));
+
 	save_item(NAME(m_ros_1.w));
 	save_item(NAME(m_ros_2_shift));
 	save_item(NAME(m_ros_2_latch));
@@ -418,6 +458,31 @@ void tek2465_state::port_1_w(uint8_t data) {
 }
 
 void tek2465_state::port_2_w(uint8_t data) {
+	if (BIT(data, 2) && !BIT(m_port_2, 2)) {
+		static const char* ATTN_BITS[16] = {
+			"CH1 DC",
+			"CH1 AC",
+			"CH1 50Ohm",
+			"CH1 1M",
+			"CH1 10Xa",
+			"CH1 1Xa",
+			"CH1 10Xb",
+			"CH1 1Xb",
+			"CH2 DC",
+			"CH2 AC",
+			"CH2 50Ohm",
+			"CH2 1M",
+			"CH2 10Xa",
+			"CH2 1Xa",
+			"CH2 10Xb",
+			"CH2 1Xb",
+		};
+		for (size_t i = 0; i < 16; ++i) {
+			if (BIT(m_attn_shift, i))
+				LOG("%s\n", ATTN_BITS[i]);
+		}
+	}
+
 	m_port_2 = data & 0x3F;
 }
 
@@ -528,9 +593,7 @@ void tek2465_state::led_w(uint8_t data) {
 }
 
 uint8_t tek2465_state::disp_seq_r() {
-	m_ds_shift <<= 1;
-	m_ds_shift |= BIT(m_port_2, 0);
-	m_ds_shift = BIT(m_ds_shift, 0, 55);
+	m_ds_shift = BIT((m_ds_shift << 1) | BIT(m_port_2, 0), 0, 55);
 	return 0x01;
 }
 
@@ -538,20 +601,61 @@ void tek2465_state::disp_seq_w(uint8_t data) {
 	disp_seq_r();
 }
 
-uint8_t tek2465_state::attn_r() { return 0x01; }
-void tek2465_state::attn_w(uint8_t data) {}
-uint8_t tek2465_state::ch2_pa_r() { return 0x01; }
-void tek2465_state::ch2_pa_w(uint8_t data) {}
-uint8_t tek2465_state::ch1_pa_r() { return 0x01; }
-void tek2465_state::ch1_pa_w(uint8_t data) {}
-uint8_t tek2465_state::b_swp_r() { return 0x01; }
-void tek2465_state::b_swp_w(uint8_t data) {}
-uint8_t tek2465_state::a_swp_r() { return 0x01; }
-void tek2465_state::a_swp_w(uint8_t data) {}
-uint8_t tek2465_state::b_trig_r() { return 0x01; }
-void tek2465_state::b_trig_w(uint8_t data) {}
-uint8_t tek2465_state::a_trig_r() { return 0x01; }
-void tek2465_state::a_trig_w(uint8_t data) {}
+uint8_t tek2465_state::attn_r() {
+	m_attn_shift = (m_attn_shift << 1) | BIT(m_port_2, 0);
+	return 0x01;
+}
+void tek2465_state::attn_w(uint8_t data) {
+	attn_r();
+}
+
+uint8_t tek2465_state::ch2_pa_r() {
+	m_p2_shift = (m_p2_shift << 1) | BIT(m_port_2, 0);
+	return 0x01;
+}
+void tek2465_state::ch2_pa_w(uint8_t data) {
+	ch2_pa_r();
+}
+uint8_t tek2465_state::ch1_pa_r() {
+	m_p1_shift = (m_p1_shift << 1) | BIT(m_port_2, 0);
+	return 0x01;
+}
+void tek2465_state::ch1_pa_w(uint8_t data) {
+	ch1_pa_r();
+}
+
+uint8_t tek2465_state::b_swp_r() {
+	m_swp_b_shift = BIT((m_swp_b_shift << 1) | BIT(m_port_2, 0), 0, 7);
+	return 0x01;
+}
+void tek2465_state::b_swp_w(uint8_t data) {
+	b_swp_r();
+}
+
+uint8_t tek2465_state::a_swp_r() {
+	m_swp_a_shift = BIT((m_swp_a_shift << 1) | BIT(m_port_2, 0), 0, 7);
+	return 0x01;
+}
+void tek2465_state::a_swp_w(uint8_t data) {
+	a_swp_r();
+}
+
+uint8_t tek2465_state::b_trig_r() {
+	m_trig_b_shift = BIT((m_trig_b_shift << 1) | BIT(m_port_2, 0), 0, 7);
+	return 0x01;
+}
+void tek2465_state::b_trig_w(uint8_t data) {
+	b_trig_r();
+}
+
+uint8_t tek2465_state::a_trig_r() {
+	m_trig_a_shift = BIT((m_trig_a_shift << 1) | BIT(m_port_2, 0), 0, 7);
+	return 0x01;
+ }
+void tek2465_state::a_trig_w(uint8_t data) {
+	a_trig_r();
+}
+
 uint8_t tek2465_state::trig_stat_strb_r() {
 	static uint64_t old_ds_shift = 0;
 
@@ -630,8 +734,8 @@ bool tek2465_state::comp_r() {
 	const float dac_volts = dac_base - (BIT(m_dac.w, 0, 12) / 4096.0) * 4e-3 * 681.0;
 
 	bool out = dac_volts >= scanned_volts;
-	LOG("Scanned[%s]: %fV, DAC: %fV, out: %s\n", m_analog_scanned[index].finder_tag(),
-			scanned_volts, dac_volts, out ? "true" : "false");
+//	LOG("Scanned[%s]: %fV, DAC: %fV, out: %s\n", m_analog_scanned[index].finder_tag(),
+//			scanned_volts, dac_volts, out ? "true" : "false");
 	return out;
 }
 
