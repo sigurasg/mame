@@ -37,6 +37,7 @@ private:
 	void debug_port1(const std::vector<std::string_view> &params);
 	void debug_port2(const std::vector<std::string_view> &params);
 	void debug_pa(const std::vector<std::string_view> &params);
+	void debug_sh(const std::vector<std::string_view> &params);
 
 	void machine_start() override;
 	void machine_reset() override;
@@ -87,6 +88,7 @@ private:
 	void trig_stat_strb_w(uint8_t data);
 
 	void dmux_0_update_dac();
+	void dmux_1_update_dac();
 
 	// Bit 2 of port 2 transitioned from 0 to 1.
 	void attn_strobe();
@@ -207,6 +209,14 @@ private:
 	uint16_t m_horiz_pos = 0;
 	uint16_t m_dly_ref_0 = 0;
 	uint16_t m_dly_ref_1 = 0;
+
+	// Main board sample and hold state.
+	uint16_t m_ch1_var = 0;
+	uint16_t m_ch1_dc_bal = 0;
+	uint16_t m_ch2_var = 0;
+	uint16_t m_ch2_dc_bal = 0;
+	uint16_t m_ch2_del_offs = 0;
+	uint16_t m_holdoff = 0;
 };
 
 constexpr std::array<const char*, 16> ANALOG_SCANNED_TAGS = {
@@ -255,10 +265,14 @@ void tek2465_state::tek2465(machine_config& config) {
 void tek2465_state::debug_init() {
 	if (machine().debug_flags & DEBUG_FLAG_ENABLED) {
 		using namespace std::placeholders;
-		machine().debugger().console().register_command("ds", CMDFLAG_CUSTOM_HELP, 0, 0, std::bind(&tek2465_state::debug_ds, this, _1));
-		machine().debugger().console().register_command("port1", CMDFLAG_CUSTOM_HELP, 0, 0, std::bind(&tek2465_state::debug_port1, this, _1));
-		machine().debugger().console().register_command("port2", CMDFLAG_CUSTOM_HELP, 0, 0, std::bind(&tek2465_state::debug_port2, this, _1));
-		machine().debugger().console().register_command("pa", CMDFLAG_CUSTOM_HELP, 0, 0, std::bind(&tek2465_state::debug_pa, this, _1));
+
+		debugger_console& con = machine().debugger().console();
+
+		con.register_command("ds", CMDFLAG_CUSTOM_HELP, 0, 0, std::bind(&tek2465_state::debug_ds, this, _1));
+		con.register_command("port1", CMDFLAG_CUSTOM_HELP, 0, 0, std::bind(&tek2465_state::debug_port1, this, _1));
+		con.register_command("port2", CMDFLAG_CUSTOM_HELP, 0, 0, std::bind(&tek2465_state::debug_port2, this, _1));
+		con.register_command("pa", CMDFLAG_CUSTOM_HELP, 0, 0, std::bind(&tek2465_state::debug_pa, this, _1));
+		con.register_command("sh", CMDFLAG_CUSTOM_HELP, 0, 0, std::bind(&tek2465_state::debug_sh, this, _1));
 	}
 }
 
@@ -338,8 +352,28 @@ void tek2465_state::debug_pa(const std::vector<std::string_view> &params) {
 
 	con.printf("PA1: %s%s\n", BIT(m_pa1_shift, 3) ? "INV " : "",
 			PA_SETTING[BIT(m_pa1_shift, 0, 3)]);
-	con.printf("PA2: %s%s\n", BIT(m_pa2_shift, 3) ? "INV " : "", 
+	con.printf("PA2: %s%s\n", BIT(m_pa2_shift, 3) ? "INV " : "",
 			PA_SETTING[BIT(m_pa2_shift, 0, 3)]);
+}
+
+void tek2465_state::debug_sh(const std::vector<std::string_view> &params) {
+	debugger_console &con = machine().debugger().console();
+
+	con.printf("NEG 1.25: 0x%04X\n", m_neg_125_v);
+	con.printf("A TIM REF: 0x%04X\n", m_a_tim_ref);
+	con.printf("B TIM REF: 0x%04X\n", m_b_tim_ref);
+	con.printf("A TRIG LVL: 0x%04X\n", m_a_trig_lvl);
+	con.printf("B TRIG LVL: 0x%04X\n", m_b_trig_lvl);
+	con.printf("HORIZ POS: 0x%04X\n", m_horiz_pos);
+	con.printf("DLY REF 0: 0x%04X\n", m_dly_ref_0);
+	con.printf("DLY REF 1: 0x%04X\n", m_dly_ref_1);
+
+	con.printf("CH1 VAR: 0x%04X\n", m_ch1_var);
+	con.printf("CH1 DC BAL: 0x%04X\n", m_ch1_dc_bal);
+	con.printf("CH2 VAR: 0x%04X\n", m_ch2_var);
+	con.printf("CH1 DC BAL: 0x%04X\n", m_ch2_dc_bal);
+	con.printf("CH2 DEL OFFS: 0x%04X\n", m_ch2_del_offs);
+	con.printf("HOLDOFF: 0x%04X\n", m_holdoff);
 }
 
 void tek2465_state::machine_start() {
@@ -379,6 +413,13 @@ void tek2465_state::machine_start() {
 	save_item(NAME(m_horiz_pos));
 	save_item(NAME(m_dly_ref_0));
 	save_item(NAME(m_dly_ref_1));
+
+	save_item(NAME(m_ch1_var));
+	save_item(NAME(m_ch1_dc_bal));
+	save_item(NAME(m_ch2_var));
+	save_item(NAME(m_ch2_dc_bal));
+	save_item(NAME(m_ch2_del_offs));
+	save_item(NAME(m_holdoff));
 
 	m_irq_timer = timer_alloc(FUNC(tek2465_state::interrupt_timer), this);
 }
@@ -469,6 +510,7 @@ void tek2465_state::dac_msb_w(uint8_t data) {
 
 	// Update the DMUX sample and hold.
 	dmux_0_update_dac();
+	dmux_1_update_dac();
 }
 
 void tek2465_state::dac_lsb_w(uint8_t data) {
@@ -476,6 +518,7 @@ void tek2465_state::dac_lsb_w(uint8_t data) {
 
 	// Update the DMUX sample and hold.
 	dmux_0_update_dac();
+	dmux_1_update_dac();
 }
 
 void tek2465_state::port_1_w(uint8_t data) {
@@ -578,11 +621,13 @@ void tek2465_state::dmux_1_off_w(uint8_t data) {
 
 uint8_t tek2465_state::dmux_1_on_r() {
 	m_mux_1_disable = false;
+
+	dmux_1_update_dac();
 	return 0x01;
 }
 
 void tek2465_state::dmux_1_on_w(uint8_t data) {
-	dmux_0_on_r();
+	dmux_1_on_r();
 }
 
 uint8_t tek2465_state::led_r() {
@@ -687,7 +732,7 @@ void tek2465_state::dmux_0_update_dac() {
 		return;
 
 	uint16_t value = BIT(m_dac.w, 0, 12);
-	switch (BIT(m_dac.b.h, 4,3)) {
+	switch (BIT(m_dac.b.h, 4, 3)) {
 		case 0: m_neg_125_v = value; break;
 		case 1: m_a_tim_ref = value; break;
 		case 2: m_b_tim_ref = value; break;
@@ -696,6 +741,23 @@ void tek2465_state::dmux_0_update_dac() {
 		case 5: m_horiz_pos = value; break;
 		case 6: m_dly_ref_0 = value; break;
 		case 7: m_dly_ref_1 = value; break;
+	}
+}
+
+void tek2465_state::dmux_1_update_dac() {
+	if (m_mux_1_disable)
+		return;
+
+	uint16_t value = BIT(m_dac.w, 0, 12);
+	switch (BIT(m_dac.b.h, 4, 3)) {
+		case 0: m_ch1_var = value; break;
+		case 1: m_ch1_dc_bal = value; break;
+		case 2: m_ch2_var = value; break;
+		case 3: m_ch2_dc_bal = value; break;
+		case 4: m_ch2_del_offs = value; break;
+		case 5: break;
+		case 6: m_holdoff = value; break;
+		case 7: break;
 	}
 }
 
