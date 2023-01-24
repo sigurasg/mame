@@ -36,6 +36,7 @@ private:
 	void debug_ds(const std::vector<std::string_view> &params);
 	void debug_port1(const std::vector<std::string_view> &params);
 	void debug_port2(const std::vector<std::string_view> &params);
+	void debug_pa(const std::vector<std::string_view> &params);
 
 	void machine_start() override;
 	void machine_reset() override;
@@ -86,6 +87,9 @@ private:
 	void trig_stat_strb_w(uint8_t data);
 
 	void dmux_0_update_dac();
+
+	// Bit 2 of port 2 transitioned from 0 to 1.
+	void attn_strobe();
 
 	// Returns a one-bit value from this multiplexer.
 	uint8_t u2456_r();
@@ -150,12 +154,20 @@ private:
 	uint16_t m_attn_shift = 0;
 
 	// Shift registers for the CH1/CH2 preamps.
-	// TODO(siggi): The length and function of these is unknown, although
-	//     it stands to reason that the preamps take care of 2/5 steppings.
-	//     This is likely not solely done through the analog variable gain
-	//     voltage, though that would be possible.
-	uint16_t m_p1_shift = 0;
-	uint16_t m_p2_shift = 0;
+	// According to the service manual, each preamp can provide
+	// 1/10, 1/2, 1/4, 1, 2.5 attenuation/amplification. Looking at
+	// the settings applied in use, these are the codings:
+	//     Code    Amplification
+	//     0x5     1/10
+	//     0x3     1/2
+	//     0x2     1/4
+	//     0x1     1
+	//     0x0     2.5
+	// From observation, 0x8 is the "invert" bit.
+	// It appears the firmware routine shifts 8 bits to each register
+	// at a time, though only 4 bits appear to be used.
+	uint8_t m_pa1_shift = 0;
+	uint8_t m_pa2_shift = 0;
 
 	//////////////////////////////////////////////////////////////////////
 	// Readout state.
@@ -246,6 +258,7 @@ void tek2465_state::debug_init() {
 		machine().debugger().console().register_command("ds", CMDFLAG_CUSTOM_HELP, 0, 0, std::bind(&tek2465_state::debug_ds, this, _1));
 		machine().debugger().console().register_command("port1", CMDFLAG_CUSTOM_HELP, 0, 0, std::bind(&tek2465_state::debug_port1, this, _1));
 		machine().debugger().console().register_command("port2", CMDFLAG_CUSTOM_HELP, 0, 0, std::bind(&tek2465_state::debug_port2, this, _1));
+		machine().debugger().console().register_command("pa", CMDFLAG_CUSTOM_HELP, 0, 0, std::bind(&tek2465_state::debug_pa, this, _1));
 	}
 }
 
@@ -308,9 +321,26 @@ void tek2465_state::debug_port2(const std::vector<std::string_view> &params) {
 	con.printf("  U2418 INH: %i\n", BIT(m_port_2, 3));
 	con.printf("  U2408 INH: %i\n", BIT(m_port_2, 4));
 	con.printf("  TRIG LED: %i\n", BIT(m_port_2, 5));
-
 }
 
+void tek2465_state::debug_pa(const std::vector<std::string_view> &params) {
+	static const char* PA_SETTING[8] = {
+		"*2.5", // 0
+		"*1",   // 1
+		"/2",   // 2
+		"/4",   // 3
+		"???",  // 4
+		"/10",  // 5
+		"???",  // 6
+		"???"   // 7
+	};
+	debugger_console &con = machine().debugger().console();
+
+	con.printf("PA1: %s%s\n", BIT(m_pa1_shift, 3) ? "INV " : "",
+			PA_SETTING[BIT(m_pa1_shift, 0, 3)]);
+	con.printf("PA2: %s%s\n", BIT(m_pa2_shift, 3) ? "INV " : "", 
+			PA_SETTING[BIT(m_pa2_shift, 0, 3)]);
+}
 
 void tek2465_state::machine_start() {
 	debug_init();
@@ -333,8 +363,8 @@ void tek2465_state::machine_start() {
 
 	save_item(NAME(m_attn_shift));
 
-	save_item(NAME(m_p1_shift));
-	save_item(NAME(m_p2_shift));
+	save_item(NAME(m_pa1_shift));
+	save_item(NAME(m_pa2_shift));
 
 	save_item(NAME(m_ros_1.w));
 	save_item(NAME(m_ros_2_shift));
@@ -458,32 +488,10 @@ void tek2465_state::port_1_w(uint8_t data) {
 }
 
 void tek2465_state::port_2_w(uint8_t data) {
-	if (BIT(data, 2) && !BIT(m_port_2, 2)) {
-		static const char* ATTN_BITS[16] = {
-			"CH1 DC",
-			"CH1 AC",
-			"CH1 50Ohm",
-			"CH1 1M",
-			"CH1 10Xa",
-			"CH1 1Xa",
-			"CH1 10Xb",
-			"CH1 1Xb",
-			"CH2 DC",
-			"CH2 AC",
-			"CH2 50Ohm",
-			"CH2 1M",
-			"CH2 10Xa",
-			"CH2 1Xa",
-			"CH2 10Xb",
-			"CH2 1Xb",
-		};
-		for (size_t i = 0; i < 16; ++i) {
-			if (BIT(m_attn_shift, i))
-				LOG("%s\n", ATTN_BITS[i]);
-		}
-	}
+	if (BIT(data, 2) && !BIT(m_port_2, 2))
+		attn_strobe();
 
-	m_port_2 = data & 0x3F;
+	m_port_2 = BIT(data, 0, 6);
 }
 
 uint8_t tek2465_state::ros_1_r() {
@@ -610,14 +618,14 @@ void tek2465_state::attn_w(uint8_t data) {
 }
 
 uint8_t tek2465_state::ch2_pa_r() {
-	m_p2_shift = (m_p2_shift << 1) | BIT(m_port_2, 0);
+	m_pa2_shift = (m_pa2_shift << 1) | BIT(m_port_2, 0);
 	return 0x01;
 }
 void tek2465_state::ch2_pa_w(uint8_t data) {
 	ch2_pa_r();
 }
 uint8_t tek2465_state::ch1_pa_r() {
-	m_p1_shift = (m_p1_shift << 1) | BIT(m_port_2, 0);
+	m_pa1_shift = (m_pa1_shift << 1) | BIT(m_port_2, 0);
 	return 0x01;
 }
 void tek2465_state::ch1_pa_w(uint8_t data) {
@@ -689,6 +697,33 @@ void tek2465_state::dmux_0_update_dac() {
 		case 6: m_dly_ref_0 = value; break;
 		case 7: m_dly_ref_1 = value; break;
 	}
+}
+
+void tek2465_state::attn_strobe() {
+	static const char* ATTN_BITS[16] = {
+		"CH1 DC",
+		"CH1 AC",
+		"CH1 50Ohm",
+		"CH1 1M",
+		"CH1 10Xa",
+		"CH1 1Xa",
+		"CH1 10Xb",
+		"CH1 1Xb",
+		"CH2 DC",
+		"CH2 AC",
+		"CH2 50Ohm",
+		"CH2 1M",
+		"CH2 10Xa",
+		"CH2 1Xa",
+		"CH2 10Xb",
+		"CH2 1Xb",
+	};
+	for (size_t i = 0; i < 16; ++i) {
+		if (BIT(m_attn_shift, i))
+			LOG("%s\n", ATTN_BITS[i]);
+	}
+
+	// TODO(siggi): Maintain attenuator state, play click sound on changes.
 }
 
 uint8_t tek2465_state::u2456_r() {
