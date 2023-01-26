@@ -114,7 +114,10 @@ private:
 	uint8_t m_port_2 = 0;
 	// Current value of the LED shift register chain.
 	uint32_t m_front_panel_leds = 0;
-	output_finder<32> m_front_panel_led_outputs;
+
+	// In addition to the shifted LED state, the TRIG LED is also funneled
+	// through here for convenience.
+	output_finder<33> m_front_panel_led_outputs;
 
 	// Current DAC value (MSB+LSB).
 	PAIR16 m_dac = {};
@@ -129,9 +132,12 @@ private:
 	// The current value of the DS shift register.
 	// Only the bottom 55 bits are used.
 	uint64_t m_ds_shift = 0;
-	// The trigger status strobe. Maybe two bits?
-	// TODO(siggi): implement.
-	// uint8_t m_ds_tss = 0;
+	// The trigger status register.
+	// Number of bits left in the register.
+	// TODO(siggi): It looks like the firmware shifts 16 bits out of this
+	//    register each interrupt, though some interrupts read 32 bits.
+	// uint8_t m_ds_tso_shift_num = 0;
+	// uint16_t m_ds_tso_shift = 0;
 
 	//////////////////////////////////////////////////////////////////////
 	// Sweep hybrid state.
@@ -535,6 +541,9 @@ void tek2465_state::port_2_w(uint8_t data) {
 		attn_strobe();
 
 	m_port_2 = BIT(data, 0, 6);
+
+	// Update the TRIG LED, the LED is lit when the bit is low.
+	m_front_panel_led_outputs[32] = !BIT(data, 5);
 }
 
 uint8_t tek2465_state::ros_1_r() {
@@ -593,13 +602,13 @@ void tek2465_state::dmux_0_on_w(uint8_t data) {
 uint8_t tek2465_state::port3_r() {
 	uint8_t ret = 0;
 
-	ret |= 0x01 << 0; // TODO(siggi): Implement TSO.
+	ret |= 0x00 << 0; // TODO(siggi): Implement TSO.
 	ret |= (comp_r() ? 0x02 : 0x00);
 	ret |= BIT(m_ros_1.w, 15) << 2;
 	ret |= 0x00 << 3;  // TODO(siggi): Implement RO ON.
 
-	// Clear the EAROM output value while reading.
-	m_earom->data_w(false);
+	// Pin the EAROM output value while reading.
+	m_earom->data_w(true);
 	// It seems the EAROM read is inverted.
 	ret |= (!m_earom->data_r()) << 4;
 	// Restore the EAROM output value.
@@ -1066,7 +1075,7 @@ ROM_START(tek2465)
 	// Default EAROM contents.
 	// TODO(siggi): Find valid EAROM contents.
 	ROM_REGION16_BE(200, "earom", 0)
-	ROM_LOAD16_WORD("earom.bin", 0, 200, CRC(4d8fbff7))
+	ROM_LOAD16_WORD("earom.bin", 0, 200, CRC(4d8fbff7) SHA1(35c8e8157ef00f2ba2173afa6f628462440c675d))
 
 	ROM_REGION(0x2000, "character_rom", 0)
 	ROM_LOAD("160-1631-02.bin", 0, 0x1000, CRC(a3da922b))

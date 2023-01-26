@@ -601,7 +601,7 @@ transform="rotate(150, 50, 50)" /></svg>]]></data>
 <element ref="BUTTON" inputtag="ROW1" inputmask="0x10">
     <bounds x="193.95" y="98.25" width="6.6" height="5.75" />
 </element>
-<element ref="LED" name="FP_LED-1">
+<element ref="LED" name="FP_LED32">
     <bounds x="264.75" y="12.0" width="6" height="4" />
 </element>
 <element ref="LED" name="FP_LED11">
