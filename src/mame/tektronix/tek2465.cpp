@@ -30,6 +30,10 @@ public:
 
 	void tek2465(machine_config& config);
 
+	// Fires an NMI on the CPU in simulation of what the PWRUP line does
+	// in the scope.
+	DECLARE_INPUT_CHANGED_MEMBER(power_pressed);
+
 private:
 	void debug_init();
 
@@ -930,12 +934,17 @@ const static ioport_value VOLTS_DIV_REMAP_TABLE[11] = {
 INPUT_PORTS_START(tek2465)
 	PORT_START("MISC")
 	PORT_DIPNAME(0xC0, 0x80, "J501")
-	PORT_DIPSETTING(0x80, "Run")
 	PORT_DIPSETTING(0x40, "Calibrate")
+	PORT_DIPSETTING(0x80, "Run")
+	PORT_DIPSETTING(0xC0, "Cycle")
 	PORT_DIPNAME(0x20, 0x00, "SI")
 	PORT_DIPSETTING(0x00, "2465")
 	PORT_DIPSETTING(0x20, "2445")
 	// TODO(siggi): Model A5P503 to enable the NOP kernel test.
+
+	PORT_START("POWER")
+	PORT_BIT( 0x01, IP_ACTIVE_HIGH, IPT_BUTTON1 )
+		PORT_CHANGED_MEMBER(DEVICE_SELF, tek2465_state,power_pressed, 0)
 
 	// The front panel is ROW/COL scanned.
 	PORT_START("ROW0")

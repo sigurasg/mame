@@ -280,6 +280,16 @@ transform="rotate(150, 50, 50)" /></svg>]]></data>
 </image>
 
     </element>
+    <element name="POWER">
+        <disk state="0">
+            <bounds x="0.0" y="0.0" width="1.0" height="1.0" />
+            <color red="1.0" green="1.0" blue="1.0" alpha="0.0"/>
+        </disk>
+        <disk state="1">
+            <bounds x="0.0" y="0.0" width="1.0" height="1.0" />
+            <color red="0.5" green="0.5" blue="0.5" />
+        </disk>
+    </element>
     <element name="Bezel">
         <image>
             <data><![CDATA[<?xml version="1.0" encoding="UTF-8" standalone="no"?>
@@ -705,6 +715,9 @@ transform="rotate(150, 50, 50)" /></svg>]]></data>
 </element>
 <element ref="SEC_DIV" inputraw="yes" inputtag="ROW4" inputmask="0x1f">
     <bounds x="216.25" y="68.0" width="20.0" height="20.0" />
+</element>
+<element ref="POWER" inputtag="POWER" inputmask="0x01">
+    <bounds x="122.61" y="129.0" width="10.0" height="10.0" />
 </element>
     </view>
 </mamelayout>
