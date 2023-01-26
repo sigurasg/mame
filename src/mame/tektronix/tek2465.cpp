@@ -272,6 +272,12 @@ void tek2465_state::tek2465(machine_config& config) {
 	m_screen->set_screen_update(FUNC(tek2465_state::screen_update));
 }
 
+INPUT_CHANGED_MEMBER(tek2465_state::power_pressed) {
+	// Pulse the NMI when the power button is pressed.
+	if (newval)
+		m_maincpu->pulse_input_line(INPUT_LINE_NMI, attotime::from_msec(10));
+}
+
 void tek2465_state::debug_init() {
 	if (machine().debug_flags & DEBUG_FLAG_ENABLED) {
 		using namespace std::placeholders;
@@ -538,6 +544,10 @@ void tek2465_state::port_1_w(uint8_t data) {
 	m_earom->c3_w(BIT(data, 2));
 	m_earom->clock_w(BIT(data, 3));
 	m_earom->data_w(BIT(data, 4));
+
+	// Setting bit 5 resets the processor through circuitry on the A5 board.
+	if (BIT(data, 5))
+		m_maincpu->pulse_input_line(INPUT_LINE_RESET, attotime::from_seconds(1));
 }
 
 void tek2465_state::port_2_w(uint8_t data) {
