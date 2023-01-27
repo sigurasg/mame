@@ -19,6 +19,8 @@
 
 #include "tek2465.lh"
 
+#include <cassert>
+
 #define VERBOSE 1
 #include "logmacro.h"
 
@@ -37,11 +39,18 @@ public:
 private:
 	void debug_init();
 
+	// Register debug dumpers.
+	// Display sequencer shift register breakdown.
 	void debug_ds(const std::vector<std::string_view> &params);
+	// Port 1/2 breakdown.
 	void debug_port1(const std::vector<std::string_view> &params);
 	void debug_port2(const std::vector<std::string_view> &params);
+	// Preamp shift register breakdown.
 	void debug_pa(const std::vector<std::string_view> &params);
+	// DAC sample and hold values.
 	void debug_sh(const std::vector<std::string_view> &params);
+	// Print or set pot values.
+	void debug_pot(const std::vector<std::string_view> &params);
 
 	void machine_start() override;
 	void machine_reset() override;
@@ -284,11 +293,12 @@ void tek2465_state::debug_init() {
 
 		debugger_console& con = machine().debugger().console();
 
-		con.register_command("ds", CMDFLAG_CUSTOM_HELP, 0, 0, std::bind(&tek2465_state::debug_ds, this, _1));
-		con.register_command("port1", CMDFLAG_CUSTOM_HELP, 0, 0, std::bind(&tek2465_state::debug_port1, this, _1));
-		con.register_command("port2", CMDFLAG_CUSTOM_HELP, 0, 0, std::bind(&tek2465_state::debug_port2, this, _1));
-		con.register_command("pa", CMDFLAG_CUSTOM_HELP, 0, 0, std::bind(&tek2465_state::debug_pa, this, _1));
-		con.register_command("sh", CMDFLAG_CUSTOM_HELP, 0, 0, std::bind(&tek2465_state::debug_sh, this, _1));
+		con.register_command("ds", CMDFLAG_NONE, 0, 0, std::bind(&tek2465_state::debug_ds, this, _1));
+		con.register_command("port1", CMDFLAG_NONE, 0, 0, std::bind(&tek2465_state::debug_port1, this, _1));
+		con.register_command("port2", CMDFLAG_NONE, 0, 0, std::bind(&tek2465_state::debug_port2, this, _1));
+		con.register_command("pa", CMDFLAG_NONE, 0, 0, std::bind(&tek2465_state::debug_pa, this, _1));
+		con.register_command("sh", CMDFLAG_NONE, 0, 0, std::bind(&tek2465_state::debug_sh, this, _1));
+		con.register_command("pot", CMDFLAG_NONE, 0, 2, std::bind(&tek2465_state::debug_pot, this, _1));
 	}
 }
 
@@ -338,7 +348,7 @@ void tek2465_state::debug_port1(const std::vector<std::string_view> &params) {
 	con.printf("  EAROM MODE: 0x%02X\n", BIT(m_port_1, 0, 3));
 	con.printf("  EAROM CLK: %i\n", BIT(m_port_1, 3));
 	con.printf("  EAROM DATA: %i\n", BIT(m_port_1, 4));
-	con.printf("  PWR DOWN: %i\n", BIT(m_port_1, 4));
+	con.printf("  PWR DOWN: %i\n", BIT(m_port_1, 5));
 }
 
 void tek2465_state::debug_port2(const std::vector<std::string_view> &params) {
@@ -390,6 +400,93 @@ void tek2465_state::debug_sh(const std::vector<std::string_view> &params) {
 	con.printf("CH1 DC BAL: 0x%04X\n", m_ch2_dc_bal);
 	con.printf("CH2 DEL OFFS: 0x%04X\n", m_ch2_del_offs);
 	con.printf("HOLDOFF: 0x%04X\n", m_holdoff);
+}
+
+void tek2465_state::debug_pot(const std::vector<std::string_view> &params) {
+	debugger_console &con = machine().debugger().console();
+
+	if (params.size() == 0) {
+		for (const auto &scanned : m_analog_scanned)
+			con.printf("%s: %d\n", scanned.finder_tag(), scanned->read());
+
+		return;
+	}
+
+	// We have at least one argument.
+	const std::string_view pot_name = params[0];
+	auto find_pot = [this](std::string_view pot_name) -> analog_field* {
+		const auto it = std::find_if(m_analog_scanned.begin(), m_analog_scanned.end(),
+			[&pot_name](const auto &elem) -> bool
+				{ return pot_name == elem.finder_tag(); });
+
+		if (it == m_analog_scanned.end())
+			return nullptr;
+
+		if ((*it)->live().analoglist.size() == 0)
+			return nullptr;
+
+		return &(*it)->live().analoglist.front();
+	};
+
+	analog_field* pot_one = find_pot(pot_name);
+	if (pot_one == nullptr) {
+		con.printf("Couldn't find pot \"%s\"\n", std::string(pot_name).c_str());
+		return;
+	}
+
+	if (params.size() == 1) {
+		con.printf("%s: %d\n", std::string(pot_name), pot_one->field().port().read());
+		return;
+	}
+
+	assert(params.size() >= 2);
+
+	// Allow +- prefix for incrementally moving a pot or a pair of pots.
+	std::string_view param = params[1];
+	char prefix = '\0';
+	if (param.size() > 0 && (param[0] == '+' || param[0] == '-')) {
+		prefix = param[0];
+		param = param.substr(1);
+	}
+
+	// Read the value.
+	uint64_t value = 0;
+	if (!con.validate_number_parameter(param, value) || value > 255) {
+		con.printf("Need a numeric argument between 0x00 and 0xFF\n");
+		return;
+	}
+
+	if (prefix == '\0') {
+		pot_one->set_value(value);
+		return;
+	}
+
+	// It's an incremental change, find the paired pot if one exists.
+	analog_field* pot_two = nullptr;
+	bool is_paired = pot_name.substr(pot_name.size() - 2) == "_A";
+	if (is_paired) {
+		std::string paired_name(pot_name);
+		paired_name = paired_name.substr(0, pot_name.size() - 2) + "_B";
+		pot_two = find_pot(paired_name);
+		if (pot_two == nullptr) {
+			con.printf("Couldn't find paired pot \"%s\"\n", paired_name.c_str());
+			return;
+		}
+	}
+
+	auto incremental_set = [](analog_field* pot, int64_t increment) {
+		auto value = pot->field().port().read();
+		pot->set_value(static_cast<uint8_t>(value + increment));
+	};
+
+	int64_t increment = static_cast<int64_t>(value);
+	if (prefix == '-')
+		increment = -increment;
+
+	incremental_set(pot_one, increment);
+	if (pot_two) {
+		incremental_set(pot_two, increment);
+	}
 }
 
 void tek2465_state::machine_start() {
