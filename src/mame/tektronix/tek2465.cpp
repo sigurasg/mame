@@ -217,6 +217,9 @@ private:
 	required_ioport m_port_misc;
 	required_ioport_array<16> m_analog_scanned;
 
+	// Temporary to patch up RO_DO to port3.
+	required_ioport m_port_ro_on;
+
 	//////////////////////////////////////////////////////////////////////
 	// A5 board sample and hold state.
 	//////////////////////////////////////////////////////////////////////
@@ -266,7 +269,8 @@ tek2465_state::tek2465_state(const machine_config& config, device_type type, con
 	m_screen(*this, "screen"),
 	m_front_panel_rows(*this, "ROW%u", 0),
 	m_port_misc(*this, "MISC"),
-	m_analog_scanned(*this, ANALOG_SCANNED_TAGS) {
+	m_analog_scanned(*this, ANALOG_SCANNED_TAGS),
+	m_port_ro_on(*this, "RO_ON") {
 }
 
 void tek2465_state::tek2465(machine_config& config) {
@@ -716,7 +720,8 @@ uint8_t tek2465_state::port3_r() {
 	ret |= 0x00 << 0; // TODO(siggi): Implement TSO.
 	ret |= (comp_r() ? 0x02 : 0x00);
 	ret |= BIT(m_ros_1.w, 15) << 2;
-	ret |= 0x00 << 3;  // TODO(siggi): Implement RO ON.
+	// TODO(siggi): Implement readout intensity pot and plumb in the RO ON.
+	ret |= m_port_ro_on->read();
 
 	// Pin the EAROM output value while reading.
 	m_earom->data_w(true);
@@ -1049,6 +1054,9 @@ INPUT_PORTS_START(tek2465)
 	PORT_DIPSETTING(0x20, "2445")
 	// TODO(siggi): Model A5P503 to enable the NOP kernel test.
 
+	PORT_START("RO_ON")
+	PORT_BIT( 0x08, IP_ACTIVE_HIGH, IPT_BUTTON1 ) PORT_NAME("RO_ON") PORT_TOGGLE
+
 	PORT_START("POWER")
 	PORT_BIT( 0x01, IP_ACTIVE_HIGH, IPT_BUTTON1 )
 		PORT_CHANGED_MEMBER(DEVICE_SELF, tek2465_state,power_pressed, 0)
@@ -1138,13 +1146,13 @@ INPUT_PORTS_START(tek2465)
 	PORT_BIT( 0xFF, 0x00, IPT_DIAL ) PORT_SENSITIVITY(16) PORT_NAME("DLY_A")
 
 	PORT_START("DLY_B")
-	PORT_BIT( 0xFF, 0x00, IPT_DIAL ) PORT_SENSITIVITY(16) PORT_NAME("DLY_B")
+	PORT_BIT( 0xFF, 0x80, IPT_DIAL ) PORT_SENSITIVITY(16) PORT_NAME("DLY_B")
 
 	PORT_START("DELTA_A")
 	PORT_BIT( 0xFF, 0x00, IPT_DIAL ) PORT_SENSITIVITY(16) PORT_NAME("DELTA_A")
 
 	PORT_START("DELTA_B")
-	PORT_BIT( 0xFF, 0x00, IPT_DIAL ) PORT_SENSITIVITY(16) PORT_NAME("DELTA_B")
+	PORT_BIT( 0xFF, 0x80, IPT_DIAL ) PORT_SENSITIVITY(16) PORT_NAME("DELTA_B")
 
 	PORT_START("TRIG_LEVEL")
 	PORT_BIT( 0xFF, 0x00, IPT_DIAL ) PORT_SENSITIVITY(16) PORT_NAME("TRIG_LEVEL")
