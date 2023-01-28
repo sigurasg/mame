@@ -968,11 +968,10 @@ TIMER_CALLBACK_MEMBER(tek2465_state::interrupt_timer) {
 uint32_t tek2465_state::screen_update(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &rect) {
 	// TODO(siggi): This is pretty hokey, but will do for rendering
 	//    the OSD. This needs to read the ROS2 state flags to know
-	//    whether to even render. Rendering in green with the set OSD
-	//    brightness would be nice. Also rendering in - say - 256 gray
-	//    scales, and decaying the previous contents of bitmap would be
-	//    nice. The updates should probably also be timed to the ROS
-	//    counter that also does the IRQs.
+	//    whether to even render. Rendering with the set OSD brightness
+	//    would be nice. Also decaying the previous contents of bitmap
+	//    on update would be nice. The updates should probably also be
+	//    timed to the ROS counter that also does the IRQs.
 	bitmap.fill(0);
 
 	const rgb_t green(0x00, 0xff, 0x00);
@@ -997,6 +996,57 @@ uint32_t tek2465_state::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 			}
 		}
 	}
+
+	// Render the cursors.
+	// TODO(siggi): This needs to be calibrated to the range the firmware
+	//    uses for the cursors. Looks like the X range is probably -1.25V
+	//    through 1.25V (to be verified). The Y range is probably the same
+	//    scale, as this boils down to voltage deflection factors in scope.
+	for (size_t row = 2; row < 4; ++row) {
+		for (size_t col = 0; col < 32; ++col) {
+			uint8_t value = m_ros_ram[row * 32 + col];
+			uint8_t* pixel = m_character_rom->base() + value * 16;
+
+			while (*pixel & 0x080) {
+				++pixel;
+				// Calculate the value of the horizontal DAC.
+				uint8_t horiz = BIT(*pixel, 0, 3) | (col << 3);
+				int32_t x = 0;
+				int32_t y = 0;
+				uint8_t mode = BIT(*pixel, 3, 3);
+				switch (mode) {
+					case 0:
+					case 1:
+						// Return to char display modes - bail.
+						return 0;
+
+					case 2: // Vert cursor 1.
+						x = col_offs + horiz;
+						y = m_dly_ref_1 / (1<<4);
+						break;
+					case 3: // Horiz cursor 1.
+						x = m_dly_ref_1 / (1<<4);
+						y = horiz;
+						break;
+					case 4: // Vert cursor 0.
+						x = col_offs + horiz;
+						y = m_dly_ref_0 / (1<<4);
+						break;
+					case 5: // Horiz cursor 0.
+						x = m_dly_ref_0 / (1<<4);
+						y = horiz;
+						break;
+					
+					default:
+						assert(false && "Should never happen?");
+						continue;
+				}
+
+				bitmap.pix(y, x) = green;
+			}
+		}
+	}
+
 	return 0;
 }
 
