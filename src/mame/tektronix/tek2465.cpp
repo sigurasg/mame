@@ -37,6 +37,9 @@ public:
 	DECLARE_INPUT_CHANGED_MEMBER(power_pressed);
 
 private:
+	static constexpr uint16_t SCREEN_WIDTH = 320;
+	static constexpr uint16_t SCREEN_HEIGHT = 265;
+
 	void debug_init();
 
 	// Register debug dumpers.
@@ -115,6 +118,9 @@ private:
 
 	// Returns true if selected analog value is less than DAC value.
 	bool comp_r();
+
+	// Returns the DAC voltage yielded by 'code'.
+	float dac_volts(uint16_t code) const;
 
 	TIMER_CALLBACK_MEMBER(interrupt_timer);
 
@@ -284,7 +290,7 @@ void tek2465_state::tek2465(machine_config& config) {
 
 	SCREEN(config, m_screen, SCREEN_TYPE_RASTER);
 	m_screen->set_refresh_hz(50);
-	m_screen->set_size(320, 256);
+	m_screen->set_size(SCREEN_WIDTH, SCREEN_HEIGHT);
 	m_screen->set_visarea_full();
 	m_screen->set_screen_update(FUNC(tek2465_state::screen_update));
 }
@@ -1002,6 +1008,11 @@ bool tek2465_state::comp_r() {
 	return out;
 }
 
+float tek2465_state::dac_volts(uint16_t code) const {
+	// This is on the multiplexer side of the DAC, which is /Iout.
+	return 1.36 /*V*/ - 681 /* Ohms */ * 4e-3 /* mA */ * (4096 - code) / 4096.0;
+}
+
 TIMER_CALLBACK_MEMBER(tek2465_state::interrupt_timer) {
 	m_maincpu->set_input_line(M6800_IRQ_LINE, ASSERT_LINE);
 }
@@ -1018,7 +1029,7 @@ uint32_t tek2465_state::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 	const rgb_t green(0x00, 0xff, 0x00);
 
 	// Where to start the OSD in X.
-	constexpr int32_t col_offs = (320 - 256) / 2;
+	constexpr int32_t col_offs = (SCREEN_WIDTH - 256) / 2;
 	// Where to start each OSD row in Y. Note that the OSD is encoded from bottom to top
 	// while the bitmap is top to bottom.
 	constexpr int32_t row_offs[2] = { 256, 32};
@@ -1040,9 +1051,10 @@ uint32_t tek2465_state::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 
 	// Render the cursors.
 	// TODO(siggi): This needs to be calibrated to the range the firmware
-	//    uses for the cursors. Looks like the X range is probably -1.25V
-	//    through 1.25V (to be verified). The Y range is probably the same
-	//    scale, as this boils down to voltage deflection factors in scope.
+	//    uses for the cursors. Looks like the range is 2.5V for 10DIV
+	//    or 0.25V/DIV with 0V at the center of the screen.
+	constexpr uint16_t PIXELS_DIV = SCREEN_WIDTH / 10;
+	constexpr float PIXELS_VOLT = PIXELS_DIV / 0.25;
 	for (size_t row = 2; row < 4; ++row) {
 		for (size_t col = 0; col < 32; ++col) {
 			uint8_t value = m_ros_ram[row * 32 + col];
@@ -1063,18 +1075,18 @@ uint32_t tek2465_state::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 
 					case 2: // Vert cursor 1.
 						x = col_offs + horiz;
-						y = m_dly_ref_1 / (1<<4);
+						y = dac_volts(m_dly_ref_1) * PIXELS_VOLT + SCREEN_HEIGHT / 2;
 						break;
 					case 3: // Horiz cursor 1.
-						x = m_dly_ref_1 / (1<<4);
+						x = dac_volts(m_dly_ref_1) * PIXELS_VOLT + SCREEN_WIDTH / 2;
 						y = horiz;
 						break;
 					case 4: // Vert cursor 0.
 						x = col_offs + horiz;
-						y = m_dly_ref_0 / (1<<4);
+						y = dac_volts(m_dly_ref_0) * PIXELS_VOLT + SCREEN_HEIGHT / 2;
 						break;
 					case 5: // Horiz cursor 0.
-						x = m_dly_ref_0 / (1<<4);
+						x = dac_volts(m_dly_ref_0) * PIXELS_VOLT + SCREEN_WIDTH / 2;
 						y = horiz;
 						break;
 
@@ -1083,7 +1095,8 @@ uint32_t tek2465_state::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 						continue;
 				}
 
-				bitmap.pix(y, x) = green;
+				if (x < SCREEN_WIDTH && y < SCREEN_HEIGHT)
+					bitmap.pix(y, x) = green;
 			}
 		}
 	}
