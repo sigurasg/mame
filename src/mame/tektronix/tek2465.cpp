@@ -42,6 +42,10 @@ private:
 	// Register debug dumpers.
 	// Display sequencer shift register breakdown.
 	void debug_ds(const std::vector<std::string_view> &params);
+	// Sweep hybrid register breakdown.
+	void debug_sweep(const std::vector<std::string_view> &params);
+	// Trigger hybrid register breakdown.
+	void debug_trigger(const std::vector<std::string_view> &params);
 	// Port 1/2 breakdown.
 	void debug_port1(const std::vector<std::string_view> &params);
 	void debug_port2(const std::vector<std::string_view> &params);
@@ -165,7 +169,7 @@ private:
 
 	// Trigger hybrid state.
 	// The trigger hybrid contains two "203-0213-90" dies, one each for the
-	// A and B trigger. Each die contains a 7 bit shift register.
+	// A and B trigger. Each die contains an 8 bit shift register.
 	uint8_t m_trig_a_shift = 0;
 	uint8_t m_trig_b_shift = 0;
 
@@ -298,6 +302,8 @@ void tek2465_state::debug_init() {
 		debugger_console& con = machine().debugger().console();
 
 		con.register_command("ds", CMDFLAG_NONE, 0, 0, std::bind(&tek2465_state::debug_ds, this, _1));
+		con.register_command("sweep", CMDFLAG_NONE, 0, 0, std::bind(&tek2465_state::debug_sweep, this, _1));
+		con.register_command("trig", CMDFLAG_NONE, 0, 0, std::bind(&tek2465_state::debug_trigger, this, _1));
 		con.register_command("port1", CMDFLAG_NONE, 0, 0, std::bind(&tek2465_state::debug_port1, this, _1));
 		con.register_command("port2", CMDFLAG_NONE, 0, 0, std::bind(&tek2465_state::debug_port2, this, _1));
 		con.register_command("pa", CMDFLAG_NONE, 0, 0, std::bind(&tek2465_state::debug_pa, this, _1));
@@ -343,6 +349,41 @@ void tek2465_state::debug_ds(const std::vector<std::string_view> &params) {
 	con.printf("  CP0-4: 0x%02X\n", bitswap(m_ds_shift, 52, 52, 50, 49, 48));
 	con.printf("  CHL: %X\n", BIT(m_ds_shift, 53));
 	con.printf("  CHM: %X\n", BIT(m_ds_shift, 54));
+}
+
+void tek2465_state::debug_sweep(const std::vector<std::string_view> &params)  {
+	auto print_sweep_state = [this](const char* name, uint8_t state) {
+		debugger_console &con = machine().debugger().console();
+		con.printf("SWEEP%s: 0x%02X\n", name, state);
+
+		con.printf("  Timing Resistor: %d\n", BIT(state, 0, 2));
+		con.printf("  Timing Capacitor: %d\n", BIT(state, 2, 2));
+		con.printf("  Timing Current: %d\n", BIT(state, 4, 2));
+		con.printf("  Not Enable Sweep Gate Output: %d\n", BIT(state, 6));
+	};
+
+	print_sweep_state("A", m_swp_a_shift);
+	print_sweep_state("B", m_swp_b_shift);
+}
+
+void tek2465_state::debug_trigger(const std::vector<std::string_view> &params) {
+	auto print_trigger_state = [this](const char* name, uint8_t state) {
+		debugger_console &con = machine().debugger().console();
+
+		con.printf("TRIG%s: 0x%02X\n", name, state);
+
+		con.printf("  -TM0, Not Trigger Mode LSB: %d\n", BIT(state, 0));
+		con.printf("  -TSM1, Not Trigger Mode MSB: %d\n", BIT(state, 1));
+		con.printf("  -FR, Not Free Run, Continuous Trigger Gate: %d\n", BIT(state, 2));
+		con.printf("  -HFR, Not Insert 50kHz Low Pass: %d\n", BIT(state, 3));
+		con.printf("  -LFT, Not Insert 50kHz High Pass: %d\n", BIT(state, 4));
+		con.printf("  -AC, Not Insert 20 Hz High Pass: %d\n", BIT(state, 5));
+		con.printf("  SL1, Slope for Not Delay Select = 1: %d\n", BIT(state, 6));
+		con.printf("  SL0, Slope for Not Delay Select = 0: %d\n", BIT(state, 7));
+	};
+
+	print_trigger_state("A", m_trig_a_shift);
+	print_trigger_state("B", m_trig_b_shift);
 }
 
 void tek2465_state::debug_port1(const std::vector<std::string_view> &params) {
@@ -819,7 +860,7 @@ void tek2465_state::a_swp_w(uint8_t data) {
 }
 
 uint8_t tek2465_state::b_trig_r() {
-	m_trig_b_shift = BIT((m_trig_b_shift << 1) | BIT(m_port_2, 0), 0, 7);
+	m_trig_b_shift = (m_trig_b_shift << 1) | BIT(m_port_2, 0);
 	return 0x01;
 }
 void tek2465_state::b_trig_w(uint8_t data) {
@@ -827,7 +868,7 @@ void tek2465_state::b_trig_w(uint8_t data) {
 }
 
 uint8_t tek2465_state::a_trig_r() {
-	m_trig_a_shift = BIT((m_trig_a_shift << 1) | BIT(m_port_2, 0), 0, 7);
+	m_trig_a_shift = (m_trig_a_shift << 1) | BIT(m_port_2, 0);
 	return 0x01;
  }
 void tek2465_state::a_trig_w(uint8_t data) {
@@ -1036,7 +1077,7 @@ uint32_t tek2465_state::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 						x = m_dly_ref_0 / (1<<4);
 						y = horiz;
 						break;
-					
+
 					default:
 						assert(false && "Should never happen?");
 						continue;
@@ -1196,13 +1237,13 @@ INPUT_PORTS_START(tek2465)
 	PORT_BIT( 0xFF, 0x00, IPT_DIAL ) PORT_SENSITIVITY(16) PORT_NAME("DLY_A")
 
 	PORT_START("DLY_B")
-	PORT_BIT( 0xFF, 0x80, IPT_DIAL ) PORT_SENSITIVITY(16) PORT_NAME("DLY_B")
+	PORT_BIT( 0xFF, 0, IPT_DIAL ) PORT_SENSITIVITY(16) PORT_NAME("DLY_B")
 
 	PORT_START("DELTA_A")
 	PORT_BIT( 0xFF, 0x00, IPT_DIAL ) PORT_SENSITIVITY(16) PORT_NAME("DELTA_A")
 
 	PORT_START("DELTA_B")
-	PORT_BIT( 0xFF, 0x80, IPT_DIAL ) PORT_SENSITIVITY(16) PORT_NAME("DELTA_B")
+	PORT_BIT( 0xFF, 0, IPT_DIAL ) PORT_SENSITIVITY(16) PORT_NAME("DELTA_B")
 
 	PORT_START("TRIG_LEVEL")
 	PORT_BIT( 0xFF, 0x00, IPT_DIAL ) PORT_SENSITIVITY(16) PORT_NAME("TRIG_LEVEL")
