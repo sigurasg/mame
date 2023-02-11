@@ -28,6 +28,15 @@
 
 namespace {
 
+struct attn {
+	bool dc_ac = false;
+	bool fifty_meg = false;
+	bool a_tenx_onex = false;
+	bool b_tenx_onex = false;
+
+	bool update(uint8_t shift_reg);
+};
+
 class tek2465_state : public driver_device {
 public:
 	tek2465_state(const machine_config& config, device_type type, const char* tag);
@@ -189,6 +198,9 @@ private:
 	// the main board A1 as well.
 	uint16_t m_attn_shift = 0;
 
+	attn ch1;
+	attn ch2;
+
 	// Shift registers for the CH1/CH2 preamps.
 	// According to the service manual, each preamp can provide
 	// 1/10, 1/2, 1/4, 1, 2.5 attenuation/amplification. Looking at
@@ -255,6 +267,25 @@ private:
 	uint16_t m_ch2_del_offs = 0;
 	uint16_t m_holdoff = 0;
 };
+
+// Updates the state of attn with the 8 bit shift register reg.
+// Returns true if a relay change occurred.
+bool attn::update(uint8_t shift_reg) {
+	bool *states[4] = { &dc_ac, &fifty_meg, &a_tenx_onex, &b_tenx_onex };
+
+	bool changed = false;
+	for (size_t i = 0; i < 8; ++i) {
+		if (BIT(shift_reg, i)) {
+			bool new_state = i & 0x1;
+			bool old_state = *(states[i / 2]);
+			changed = old_state != new_state;
+
+			*(states[i / 2]) = new_state;
+		}
+	}
+
+	return changed;
+}
 
 constexpr std::array<const char*, 16> ANALOG_SCANNED_TAGS = {
 	"HOLDOFF",
@@ -578,6 +609,16 @@ void tek2465_state::machine_start() {
 	save_item(NAME(m_trig_b_shift));
 
 	save_item(NAME(m_attn_shift));
+
+	save_item(NAME(ch1.dc_ac));
+	save_item(NAME(ch1.fifty_meg));
+	save_item(NAME(ch1.a_tenx_onex));
+	save_item(NAME(ch1.b_tenx_onex));
+
+	save_item(NAME(ch2.dc_ac));
+	save_item(NAME(ch2.fifty_meg));
+	save_item(NAME(ch2.a_tenx_onex));
+	save_item(NAME(ch2.b_tenx_onex));
 
 	save_item(NAME(m_pa1_shift));
 	save_item(NAME(m_pa2_shift));
@@ -952,38 +993,9 @@ void tek2465_state::dmux_1_update_dac() {
 }
 
 void tek2465_state::attn_strobe() {
-	static const char* ATTN_BITS[16] = {
-		"CH1 DC",
-		"CH1 AC",
-		"CH1 50Ohm",
-		"CH1 1M",
-		"CH1 10Xa",
-		"CH1 1Xa",
-		"CH1 10Xb",
-		"CH1 1Xb",
-		"CH2 DC",
-		"CH2 AC",
-		"CH2 50Ohm",
-		"CH2 1M",
-		"CH2 10Xa",
-		"CH2 1Xa",
-		"CH2 10Xb",
-		"CH2 1Xb",
-	};
-
-	// TODO(siggi): Move this to the machine state.
-	static bool attns[8] = {};
-	for (size_t i = 0; i < 16; ++i) {
-		if (BIT(m_attn_shift, i)) {
-			bool new_state = i & 0x1;
-
-			if (new_state != attns[i / 2]) {
-				attns[i / 2] = new_state;
-
-				m_samples->start(0, 0);
-				LOG("%s\n", ATTN_BITS[i]);
-			}
-		}
+	if (ch1.update(m_attn_shift) || ch2.update(m_attn_shift >> 8)) {
+		// A relay changed position, play the sound.
+		m_samples->start(0, 0);
 	}
 }
 
