@@ -10,8 +10,10 @@
 
 #include "cpu/m6800/m6800.h"
 #include "machine/er1400.h"
+#include "sound/samples.h"
 
 #include "screen.h"
+#include "speaker.h"
 
 #include "debug/debugcon.h"
 #include "debug/debugcmd.h"
@@ -130,6 +132,9 @@ private:
 	required_device<cpu_device> m_maincpu;
 	required_device<er1400_device> m_earom;
 	emu_timer* m_irq_timer;
+
+	// Plays the relay clicks.
+	required_device<samples_device> m_samples;
 
 	// Value of the most recent write to port 1.
 	uint8_t m_port_1 = 0;
@@ -274,6 +279,7 @@ tek2465_state::tek2465_state(const machine_config& config, device_type type, con
 	driver_device(config, type, tag),
 	m_maincpu(*this, "maincpu"),
 	m_earom(*this, "earom"),
+	m_samples(*this, "samples"),
 	m_front_panel_led_outputs(*this, "FP_LED%u", 0U),
 	m_character_rom(*this, "character_rom"),
 	m_screen(*this, "screen"),
@@ -287,6 +293,18 @@ void tek2465_state::tek2465(machine_config& config) {
 	M6808(config, m_maincpu, 5_MHz_XTAL);
 	ER1400(config, m_earom, 5_MHz_XTAL);
 	m_maincpu->set_addrmap(AS_PROGRAM, &tek2465_state::tek2465_map);
+
+	SPEAKER(config, "mono").front_center();
+	SAMPLES(config, m_samples);
+	static const char *const sample_names[] = {
+		"*tek2465",
+		"relay",
+		nullptr
+	};
+
+	m_samples->set_channels(1);
+	m_samples->set_samples_names(sample_names);
+	m_samples->add_route(ALL_OUTPUTS, "mono", 1.0);
 
 	SCREEN(config, m_screen, SCREEN_TYPE_RASTER);
 	m_screen->set_refresh_hz(50);
@@ -952,12 +970,21 @@ void tek2465_state::attn_strobe() {
 		"CH2 10Xb",
 		"CH2 1Xb",
 	};
-	for (size_t i = 0; i < 16; ++i) {
-		if (BIT(m_attn_shift, i))
-			LOG("%s\n", ATTN_BITS[i]);
-	}
 
-	// TODO(siggi): Maintain attenuator state, play click sound on changes.
+	// TODO(siggi): Move this to the machine state.
+	static bool attns[8] = {};
+	for (size_t i = 0; i < 16; ++i) {
+		if (BIT(m_attn_shift, i)) {
+			bool new_state = i & 0x1;
+
+			if (new_state != attns[i / 2]) {
+				attns[i / 2] = new_state;
+
+				m_samples->start(0, 0);
+				LOG("%s\n", ATTN_BITS[i]);
+			}
+		}
+	}
 }
 
 uint8_t tek2465_state::u2456_r() {
@@ -1095,7 +1122,7 @@ uint32_t tek2465_state::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 						continue;
 				}
 
-				if (x < SCREEN_WIDTH && y < SCREEN_HEIGHT)
+				if (x >= 0 && x < SCREEN_WIDTH && y >= 0 && y < SCREEN_HEIGHT)
 					bitmap.pix(y, x) = green;
 			}
 		}
@@ -1226,7 +1253,7 @@ INPUT_PORTS_START(tek2465)
 
 	PORT_START("ROW8")
 	PORT_BIT( 0x01, IP_ACTIVE_LOW, IPT_KEYPAD ) PORT_NAME("X10_MAG") PORT_TOGGLE
-	PORT_BIT( 0x02, IP_ACTIVE_LOW, IPT_KEYPAD ) PORT_NAME("TRACKING")
+	PORT_BIT( 0x02, IP_ACTIVE_LOW, IPT_KEYPAD ) PORT_NAME("TRACKING") PORT_TOGGLE
 	PORT_BIT( 0x04, IP_ACTIVE_LOW, IPT_KEYPAD ) PORT_NAME("DELTA_T") PORT_CODE(KEYCODE_T)
 	PORT_BIT( 0x08, IP_ACTIVE_LOW, IPT_KEYPAD ) PORT_NAME("DELTA_V") PORT_CODE(KEYCODE_V)
 	PORT_BIT( 0x10, IP_ACTIVE_LOW, IPT_KEYPAD ) PORT_NAME("SLOPE") PORT_CODE(KEYCODE_S)
@@ -1311,6 +1338,6 @@ ROM_END
 
 }  // namespace
 
-#define GAME_FLAGS  MACHINE_NO_SOUND|MACHINE_TYPE_OTHER|MACHINE_CLICKABLE_ARTWORK
+#define GAME_FLAGS  MACHINE_TYPE_OTHER|MACHINE_CLICKABLE_ARTWORK
 
 GAMEL(1984, tek2465, 0, tek2465, tek2465, tek2465_state, empty_init, ROT0 , "Tektronix", "Tektronix 2465", GAME_FLAGS, layout_tek2465);
