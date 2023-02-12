@@ -28,15 +28,6 @@
 
 namespace {
 
-struct attn {
-	bool dc_ac = false;
-	bool fifty_meg = false;
-	bool a_tenx_onex = false;
-	bool b_tenx_onex = false;
-
-	bool update(uint8_t shift_reg);
-};
-
 class tek2465_state : public driver_device {
 public:
 	tek2465_state(const machine_config& config, device_type type, const char* tag);
@@ -50,6 +41,44 @@ public:
 private:
 	static constexpr uint16_t SCREEN_WIDTH = 320;
 	static constexpr uint16_t SCREEN_HEIGHT = 265;
+
+	// Attenuator state.
+	struct attn {
+		bool update(uint8_t shift_reg);
+
+		bool dc_ac = false;
+		bool fifty_meg = false;
+		bool a_tenx_onex = false;
+		bool b_tenx_onex = false;
+	};
+
+	// Readout board state.
+	struct a4_state {
+		explicit a4_state(tek2465_state& state);
+
+		uint8_t ros_1_r();
+		void ros_1_w(uint8_t data);
+		void ros_2_w(uint8_t data);
+
+		// Render the readout to bitmap.
+		void render(bitmap_rgb32 &bitmap);
+
+		// Current value of the ROS1 shift register.
+		PAIR16 m_ros_1 = {};
+
+		// Current value of the ROS2 shift register.
+		uint8_t m_ros_2_shift = 0;
+		// The most recently latched value from above.
+		uint8_t m_ros_2_latch = 0;
+
+		// The readout RAM contents.
+		uint8_t m_ros_ram[128] = { 0xFF };
+
+		// The character ROM for the OSD.
+		required_memory_region m_character_rom;
+
+		const tek2465_state& m_scope;
+	};
 
 	void debug_init();
 
@@ -145,16 +174,17 @@ private:
 	// Plays the relay clicks.
 	required_device<samples_device> m_samples;
 
-	// Value of the most recent write to port 1.
-	uint8_t m_port_1 = 0;
-	// Value of the most recent write to port 2.
-	uint8_t m_port_2 = 0;
 	// Current value of the LED shift register chain.
 	uint32_t m_front_panel_leds = 0;
 
 	// In addition to the shifted LED state, the TRIG LED is also funneled
 	// through here for convenience.
 	output_finder<33> m_front_panel_led_outputs;
+
+	// Value of the most recent write to port 1.
+	uint8_t m_port_1 = 0;
+	// Value of the most recent write to port 2.
+	uint8_t m_port_2 = 0;
 
 	// Current DAC value (MSB+LSB).
 	PAIR16 m_dac = {};
@@ -217,22 +247,7 @@ private:
 	uint8_t m_pa1_shift = 0;
 	uint8_t m_pa2_shift = 0;
 
-	//////////////////////////////////////////////////////////////////////
-	// Readout state.
-	//////////////////////////////////////////////////////////////////////
-	// Current value of the ROS1 shift register.
-	PAIR16 m_ros_1 = {};
-
-	// Current value of the ROS2 shift register.
-	uint8_t m_ros_2_shift = 0;
-	// The most recently latched value from above.
-	uint8_t m_ros_2_latch = 0;
-
-	// The readout RAM contents.
-	uint8_t m_ros_ram[128] = { 0xFF };
-
-	// The character ROM for the OSD.
-	required_memory_region m_character_rom;
+	a4_state a4;
 
 	// Temporary to display the OSD only.
 	required_device<screen_device> m_screen;
@@ -270,7 +285,7 @@ private:
 
 // Updates the state of attn with the 8 bit shift register reg.
 // Returns true if a relay change occurred.
-bool attn::update(uint8_t shift_reg) {
+bool tek2465_state::attn::update(uint8_t shift_reg) {
 	bool *states[4] = { &dc_ac, &fifty_meg, &a_tenx_onex, &b_tenx_onex };
 
 	bool changed = false;
@@ -286,6 +301,120 @@ bool attn::update(uint8_t shift_reg) {
 
 	return changed;
 }
+
+tek2465_state::a4_state::a4_state(tek2465_state& state)
+	: m_character_rom(state, "character_rom"), m_scope(state) {}
+
+
+uint8_t tek2465_state::a4_state::ros_1_r() {
+	ros_1_w(0x01);
+	return 0x01;
+}
+
+void tek2465_state::a4_state::ros_1_w(uint8_t data) {
+	// Any access to the ros_1 register latches
+	// the ros_2 shift register to the output.
+	m_ros_2_latch = m_ros_2_shift;
+
+	m_ros_1.w <<= 1;
+	m_ros_1.w |= BIT(data, 0);
+}
+
+void tek2465_state::a4_state::ros_2_w(uint8_t data) {
+	m_ros_2_shift <<= 1;
+	m_ros_2_shift |= BIT(data, 0);
+
+	// The shift register address and contents are both
+	// bit-swizzled to the address & data lines.
+	uint8_t address = bitswap(m_ros_1.b.l, 1, 2, 3, 4, 5, 6, 7);
+	if (!BIT(m_ros_2_latch, 2)) {
+		// If bit 2 of the ROS2 register is set, read back the RAM
+		// contents to the upper byte of the ROS1 register.
+		m_ros_1.b.h = bitswap(m_ros_ram[address], 0, 1, 2, 3, 4, 5, 6, 7);
+	} else if (!BIT(m_ros_2_latch, 3)) {
+		// On a write with the mode set right, write through to the
+		// character RAM.
+		m_ros_ram[address] = bitswap(m_ros_1.b.h, 0, 1, 2, 3, 4, 5, 6, 7);
+	}
+}
+
+void tek2465_state::a4_state::render(bitmap_rgb32 &bitmap) {
+	const rgb_t green(0x00, 0xff, 0x00);
+
+	// Where to start the OSD in X.
+	constexpr int32_t col_offs = (SCREEN_WIDTH - 256) / 2;
+	// Where to start each OSD row in Y. Note that the OSD is encoded from bottom to top
+	// while the bitmap is top to bottom.
+	constexpr int32_t row_offs[2] = { 256, 32};
+	for (size_t row = 0; row < 2; ++row) {
+		for (size_t col = 0; col < 32; ++col) {
+			uint8_t value = m_ros_ram[row * 32 + col];
+			uint8_t* pixel = m_character_rom->base() + value * 16;
+
+			while (*pixel & 0x80) {
+				++pixel;
+				int32_t x = col_offs + col * 8 + (*pixel & 0x07);
+				// Flip the image vertically.
+				int32_t y = row_offs[row] - (row * 16 + ((*pixel & 0x7F) >> 3));
+
+				bitmap.pix(y, x) = green;
+			}
+		}
+	}
+
+	// Render the cursors.
+	// TODO(siggi): This needs to be calibrated to the range the firmware
+	//    uses for the cursors. Looks like the range is 2.5V for 10DIV
+	//    or 0.25V/DIV with 0V at the center of the screen.
+	constexpr uint16_t PIXELS_DIV = SCREEN_WIDTH / 10;
+	constexpr float PIXELS_VOLT = PIXELS_DIV / 0.25;
+	for (size_t row = 2; row < 4; ++row) {
+		for (size_t col = 0; col < 32; ++col) {
+			uint8_t value = m_ros_ram[row * 32 + col];
+			uint8_t* pixel = m_character_rom->base() + value * 16;
+
+			while (*pixel & 0x080) {
+				++pixel;
+				// Calculate the value of the horizontal DAC.
+				uint8_t horiz = BIT(*pixel, 0, 3) | (col << 3);
+				int32_t x = 0;
+				int32_t y = 0;
+				uint8_t mode = BIT(*pixel, 3, 3);
+				switch (mode) {
+					case 0:
+					case 1:
+						// Return to char display modes - bail.
+						return;
+
+					case 2: // Vert cursor 1.
+						x = col_offs + horiz;
+						y = m_scope.dac_volts(m_scope.m_dly_ref_1) * PIXELS_VOLT + SCREEN_HEIGHT / 2;
+						break;
+					case 3: // Horiz cursor 1.
+						x = m_scope.dac_volts(m_scope.m_dly_ref_1) * PIXELS_VOLT + SCREEN_WIDTH / 2;
+						y = horiz;
+						break;
+					case 4: // Vert cursor 0.
+						x = col_offs + horiz;
+						y = m_scope.dac_volts(m_scope.m_dly_ref_0) * PIXELS_VOLT + SCREEN_HEIGHT / 2;
+						break;
+					case 5: // Horiz cursor 0.
+						x = m_scope.dac_volts(m_scope.m_dly_ref_0) * PIXELS_VOLT + SCREEN_WIDTH / 2;
+						y = horiz;
+						break;
+
+					default:
+						assert(false && "Should never happen?");
+						continue;
+				}
+
+				if (x >= 0 && x < SCREEN_WIDTH && y >= 0 && y < SCREEN_HEIGHT)
+					bitmap.pix(y, x) = green;
+			}
+		}
+	}
+}
+
 
 constexpr std::array<const char*, 16> ANALOG_SCANNED_TAGS = {
 	"HOLDOFF",
@@ -312,7 +441,7 @@ tek2465_state::tek2465_state(const machine_config& config, device_type type, con
 	m_earom(*this, "earom"),
 	m_samples(*this, "samples"),
 	m_front_panel_led_outputs(*this, "FP_LED%u", 0U),
-	m_character_rom(*this, "character_rom"),
+	a4(*this),
 	m_screen(*this, "screen"),
 	m_front_panel_rows(*this, "ROW%u", 0),
 	m_port_misc(*this, "MISC"),
@@ -623,10 +752,10 @@ void tek2465_state::machine_start() {
 	save_item(NAME(m_pa1_shift));
 	save_item(NAME(m_pa2_shift));
 
-	save_item(NAME(m_ros_1.w));
-	save_item(NAME(m_ros_2_shift));
-	save_item(NAME(m_ros_2_latch));
-	save_item(NAME(m_ros_ram));
+	save_item(NAME(a4.m_ros_1.w));
+	save_item(NAME(a4.m_ros_2_shift));
+	save_item(NAME(a4.m_ros_2_latch));
+	save_item(NAME(a4.m_ros_ram));
 
 	save_item(NAME(m_neg_125_v));
 	save_item(NAME(m_a_tim_ref));
@@ -768,36 +897,15 @@ void tek2465_state::port_2_w(uint8_t data) {
 }
 
 uint8_t tek2465_state::ros_1_r() {
-	// A ROS1 read is used to latch ROS2 shift to output.
-	ros_1_w(0x01);
-	return 0x01;
+	return a4.ros_1_r();
 }
 
 void tek2465_state::ros_1_w(uint8_t data) {
-	// Any access to the ros_1 register latches
-	// the ros_2 shift register to the output.
-	m_ros_2_latch = m_ros_2_shift;
-
-	m_ros_1.w <<= 1;
-	m_ros_1.w |= BIT(data, 0);
+	a4.ros_1_w(data);
 }
 
 void tek2465_state::ros_2_w(uint8_t data) {
-	m_ros_2_shift <<= 1;
-	m_ros_2_shift |= BIT(data, 0);
-
-	// The shift register address and contents are both
-	// bit-swizzled to the address & data lines.
-	uint8_t address = bitswap(m_ros_1.b.l, 1, 2, 3, 4, 5, 6, 7);
-	if (!BIT(m_ros_2_latch, 2)) {
-		// If bit 2 of the ROS2 register is set, read back the RAM
-		// contents to the upper byte of the ROS1 register.
-		m_ros_1.b.h = bitswap(m_ros_ram[address], 0, 1, 2, 3, 4, 5, 6, 7);
-	} else if (!BIT(m_ros_2_latch, 3)) {
-		// On a write with the mode set right, write through to the
-		// character RAM.
-		m_ros_ram[address] = bitswap(m_ros_1.b.h, 0, 1, 2, 3, 4, 5, 6, 7);
-	}
+	a4.ros_2_w(data);
 }
 
 uint8_t tek2465_state::dmux_0_off_r() {
@@ -825,7 +933,7 @@ uint8_t tek2465_state::port3_r() {
 
 	ret |= 0x00 << 0; // TODO(siggi): Implement TSO.
 	ret |= (comp_r() ? 0x02 : 0x00);
-	ret |= BIT(m_ros_1.w, 15) << 2;
+	ret |= BIT(a4.m_ros_1.w, 15) << 2;
 	// TODO(siggi): Implement readout intensity pot and plumb in the RO ON.
 	ret |= m_port_ro_on->read();
 
@@ -1064,82 +1172,7 @@ uint32_t tek2465_state::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 	//    on update would be nice. The updates should probably also be
 	//    timed to the ROS counter that also does the IRQs.
 	bitmap.fill(0);
-
-	const rgb_t green(0x00, 0xff, 0x00);
-
-	// Where to start the OSD in X.
-	constexpr int32_t col_offs = (SCREEN_WIDTH - 256) / 2;
-	// Where to start each OSD row in Y. Note that the OSD is encoded from bottom to top
-	// while the bitmap is top to bottom.
-	constexpr int32_t row_offs[2] = { 256, 32};
-	for (size_t row = 0; row < 2; ++row) {
-		for (size_t col = 0; col < 32; ++col) {
-			uint8_t value = m_ros_ram[row * 32 + col];
-			uint8_t* pixel = m_character_rom->base() + value * 16;
-
-			while (*pixel & 0x80) {
-				++pixel;
-				int32_t x = col_offs + col * 8 + (*pixel & 0x07);
-				// Flip the image vertically.
-				int32_t y = row_offs[row] - (row * 16 + ((*pixel & 0x7F) >> 3));
-
-				bitmap.pix(y, x) = green;
-			}
-		}
-	}
-
-	// Render the cursors.
-	// TODO(siggi): This needs to be calibrated to the range the firmware
-	//    uses for the cursors. Looks like the range is 2.5V for 10DIV
-	//    or 0.25V/DIV with 0V at the center of the screen.
-	constexpr uint16_t PIXELS_DIV = SCREEN_WIDTH / 10;
-	constexpr float PIXELS_VOLT = PIXELS_DIV / 0.25;
-	for (size_t row = 2; row < 4; ++row) {
-		for (size_t col = 0; col < 32; ++col) {
-			uint8_t value = m_ros_ram[row * 32 + col];
-			uint8_t* pixel = m_character_rom->base() + value * 16;
-
-			while (*pixel & 0x080) {
-				++pixel;
-				// Calculate the value of the horizontal DAC.
-				uint8_t horiz = BIT(*pixel, 0, 3) | (col << 3);
-				int32_t x = 0;
-				int32_t y = 0;
-				uint8_t mode = BIT(*pixel, 3, 3);
-				switch (mode) {
-					case 0:
-					case 1:
-						// Return to char display modes - bail.
-						return 0;
-
-					case 2: // Vert cursor 1.
-						x = col_offs + horiz;
-						y = dac_volts(m_dly_ref_1) * PIXELS_VOLT + SCREEN_HEIGHT / 2;
-						break;
-					case 3: // Horiz cursor 1.
-						x = dac_volts(m_dly_ref_1) * PIXELS_VOLT + SCREEN_WIDTH / 2;
-						y = horiz;
-						break;
-					case 4: // Vert cursor 0.
-						x = col_offs + horiz;
-						y = dac_volts(m_dly_ref_0) * PIXELS_VOLT + SCREEN_HEIGHT / 2;
-						break;
-					case 5: // Horiz cursor 0.
-						x = dac_volts(m_dly_ref_0) * PIXELS_VOLT + SCREEN_WIDTH / 2;
-						y = horiz;
-						break;
-
-					default:
-						assert(false && "Should never happen?");
-						continue;
-				}
-
-				if (x >= 0 && x < SCREEN_WIDTH && y >= 0 && y < SCREEN_HEIGHT)
-					bitmap.pix(y, x) = green;
-			}
-		}
-	}
-
+	a4.render(bitmap);
 	return 0;
 }
 
