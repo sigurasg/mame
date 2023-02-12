@@ -53,8 +53,8 @@ private:
 	};
 
 	// Readout board state.
-	struct a4_state {
-		explicit a4_state(tek2465_state& state);
+	struct a4_board {
+		explicit a4_board(tek2465_state &scope);
 
 		uint8_t ros_1_r();
 		void ros_1_w(uint8_t data);
@@ -247,7 +247,7 @@ private:
 	uint8_t m_pa1_shift = 0;
 	uint8_t m_pa2_shift = 0;
 
-	a4_state a4;
+	a4_board m_a4;
 
 	// Temporary to display the OSD only.
 	required_device<screen_device> m_screen;
@@ -302,16 +302,16 @@ bool tek2465_state::attn::update(uint8_t shift_reg) {
 	return changed;
 }
 
-tek2465_state::a4_state::a4_state(tek2465_state& state)
-	: m_character_rom(state, "character_rom"), m_scope(state) {}
+tek2465_state::a4_board::a4_board(tek2465_state &scope) :
+	m_character_rom(scope, "character_rom"), m_scope(scope) {
+}
 
-
-uint8_t tek2465_state::a4_state::ros_1_r() {
+uint8_t tek2465_state::a4_board::ros_1_r() {
 	ros_1_w(0x01);
 	return 0x01;
 }
 
-void tek2465_state::a4_state::ros_1_w(uint8_t data) {
+void tek2465_state::a4_board::ros_1_w(uint8_t data) {
 	// Any access to the ros_1 register latches
 	// the ros_2 shift register to the output.
 	m_ros_2_latch = m_ros_2_shift;
@@ -320,7 +320,7 @@ void tek2465_state::a4_state::ros_1_w(uint8_t data) {
 	m_ros_1.w |= BIT(data, 0);
 }
 
-void tek2465_state::a4_state::ros_2_w(uint8_t data) {
+void tek2465_state::a4_board::ros_2_w(uint8_t data) {
 	m_ros_2_shift <<= 1;
 	m_ros_2_shift |= BIT(data, 0);
 
@@ -338,7 +338,7 @@ void tek2465_state::a4_state::ros_2_w(uint8_t data) {
 	}
 }
 
-void tek2465_state::a4_state::render(bitmap_rgb32 &bitmap) {
+void tek2465_state::a4_board::render(bitmap_rgb32 &bitmap) {
 	const rgb_t green(0x00, 0xff, 0x00);
 
 	// Where to start the OSD in X.
@@ -441,7 +441,7 @@ tek2465_state::tek2465_state(const machine_config& config, device_type type, con
 	m_earom(*this, "earom"),
 	m_samples(*this, "samples"),
 	m_front_panel_led_outputs(*this, "FP_LED%u", 0U),
-	a4(*this),
+	m_a4(*this),
 	m_screen(*this, "screen"),
 	m_front_panel_rows(*this, "ROW%u", 0),
 	m_port_misc(*this, "MISC"),
@@ -752,10 +752,10 @@ void tek2465_state::machine_start() {
 	save_item(NAME(m_pa1_shift));
 	save_item(NAME(m_pa2_shift));
 
-	save_item(NAME(a4.m_ros_1.w));
-	save_item(NAME(a4.m_ros_2_shift));
-	save_item(NAME(a4.m_ros_2_latch));
-	save_item(NAME(a4.m_ros_ram));
+	save_item(NAME(m_a4.m_ros_1.w));
+	save_item(NAME(m_a4.m_ros_2_shift));
+	save_item(NAME(m_a4.m_ros_2_latch));
+	save_item(NAME(m_a4.m_ros_ram));
 
 	save_item(NAME(m_neg_125_v));
 	save_item(NAME(m_a_tim_ref));
@@ -897,15 +897,15 @@ void tek2465_state::port_2_w(uint8_t data) {
 }
 
 uint8_t tek2465_state::ros_1_r() {
-	return a4.ros_1_r();
+	return m_a4.ros_1_r();
 }
 
 void tek2465_state::ros_1_w(uint8_t data) {
-	a4.ros_1_w(data);
+	m_a4.ros_1_w(data);
 }
 
 void tek2465_state::ros_2_w(uint8_t data) {
-	a4.ros_2_w(data);
+	m_a4.ros_2_w(data);
 }
 
 uint8_t tek2465_state::dmux_0_off_r() {
@@ -933,7 +933,7 @@ uint8_t tek2465_state::port3_r() {
 
 	ret |= 0x00 << 0; // TODO(siggi): Implement TSO.
 	ret |= (comp_r() ? 0x02 : 0x00);
-	ret |= BIT(a4.m_ros_1.w, 15) << 2;
+	ret |= BIT(m_a4.m_ros_1.w, 15) << 2;
 	// TODO(siggi): Implement readout intensity pot and plumb in the RO ON.
 	ret |= m_port_ro_on->read();
 
@@ -1172,7 +1172,7 @@ uint32_t tek2465_state::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 	//    on update would be nice. The updates should probably also be
 	//    timed to the ROS counter that also does the IRQs.
 	bitmap.fill(0);
-	a4.render(bitmap);
+	m_a4.render(bitmap);
 	return 0;
 }
 
