@@ -130,9 +130,6 @@ private:
 	void dac_lsb_w(uint8_t data);
 	void port_1_w(uint8_t data);
 	void port_2_w(uint8_t data);
-	uint8_t ros_1_r();
-	void ros_1_w(uint8_t data);
-	void ros_2_w(uint8_t data);
 	uint8_t dmux_0_off_r();
 	void dmux_0_off_w(uint8_t data);
 	uint8_t dmux_0_on_r();
@@ -330,7 +327,7 @@ tek2465_a4_device::tek2465_a4_device(
 		u32 clock) :
 	device_t(config, TEK2465_A4_BOARD, tag, owner, clock),
 	// TODO(siggi): Fixme?
-	m_character_rom(*owner, "character_rom"),
+	m_character_rom(*this, "character_rom"),
 	m_scope(*dynamic_cast<tek2465_state*>(owner)) {
 }
 
@@ -927,21 +924,6 @@ void tek2465_state::port_2_w(uint8_t data) {
 	m_front_panel_led_outputs[32] = !BIT(data, 5);
 }
 
-// DO NOT SUBMIT
-#if 0
-uint8_t tek2465_state::ros_1_r() {
-	return m_a4.ros_1_r();
-}
-
-void tek2465_state::ros_1_w(uint8_t data) {
-	m_a4.ros_1_w(data);
-}
-
-void tek2465_state::ros_2_w(uint8_t data) {
-	m_a4.ros_2_w(data);
-}
-#endif
-
 uint8_t tek2465_state::dmux_0_off_r() {
 	m_mux_0_disable = true;
 	return 0x01;
@@ -1411,7 +1393,7 @@ ROM_START(tek2465)
 	ROM_REGION16_BE(200, "earom", 0)
 	ROM_LOAD16_WORD("earom.bin", 0, 200, CRC(4d8fbff7) SHA1(35c8e8157ef00f2ba2173afa6f628462440c675d))
 
-	ROM_REGION(0x2000, "character_rom", 0)
+	ROM_REGION(0x2000, "a4:character_rom", 0)
 	ROM_LOAD("160-1631-02.bin", 0, 0x1000, CRC(a3da922b))
 ROM_END
 
