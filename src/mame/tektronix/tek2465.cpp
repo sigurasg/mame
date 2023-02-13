@@ -26,7 +26,51 @@
 #define VERBOSE 1
 #include "logmacro.h"
 
-namespace {
+class tek2465_state;
+
+// Readout board state.
+class tek2465_a4_device : public device_t {
+public:
+	tek2465_a4_device(
+		const machine_config &config,
+		const char *tag,
+		device_t *owner,
+		u32 clock = 0U);
+
+	uint8_t ros_1_r();
+	void ros_1_w(uint8_t data);
+	void ros_2_w(uint8_t data);
+
+	// Render the readout to bitmap.
+	void render(bitmap_rgb32 &bitmap);
+
+	DECLARE_READ_LINE_MEMBER(ros_1_msb) {
+		return BIT(m_ros_1.w, 15);
+	}
+
+protected:
+	void device_start() override;
+
+private:
+	// Current value of the ROS1 shift register.
+	PAIR16 m_ros_1 = {};
+
+	// Current value of the ROS2 shift register.
+	uint8_t m_ros_2_shift = 0;
+	// The most recently latched value from above.
+	uint8_t m_ros_2_latch = 0;
+
+	// The readout RAM contents.
+	uint8_t m_ros_ram[128] = { 0xFF };
+
+	// The character ROM for the OSD.
+	required_memory_region m_character_rom;
+
+	const tek2465_state& m_scope;
+};
+
+DEFINE_DEVICE_TYPE(TEK2465_A4_BOARD, tek2465_a4_device, "tek_a4_board", "Tektronix 2465 A4 readout board.")
+
 
 class tek2465_state : public driver_device {
 public:
@@ -39,8 +83,8 @@ public:
 	DECLARE_INPUT_CHANGED_MEMBER(power_pressed);
 
 private:
-	static constexpr uint16_t SCREEN_WIDTH = 320;
-	static constexpr uint16_t SCREEN_HEIGHT = 265;
+	// TODO(siggi): Fixme.
+	friend class tek2465_a4_device;
 
 	// Attenuator state.
 	struct attn {
@@ -52,33 +96,6 @@ private:
 		bool b_tenx_onex = false;
 	};
 
-	// Readout board state.
-	struct a4_board {
-		explicit a4_board(tek2465_state &scope);
-
-		uint8_t ros_1_r();
-		void ros_1_w(uint8_t data);
-		void ros_2_w(uint8_t data);
-
-		// Render the readout to bitmap.
-		void render(bitmap_rgb32 &bitmap);
-
-		// Current value of the ROS1 shift register.
-		PAIR16 m_ros_1 = {};
-
-		// Current value of the ROS2 shift register.
-		uint8_t m_ros_2_shift = 0;
-		// The most recently latched value from above.
-		uint8_t m_ros_2_latch = 0;
-
-		// The readout RAM contents.
-		uint8_t m_ros_ram[128] = { 0xFF };
-
-		// The character ROM for the OSD.
-		required_memory_region m_character_rom;
-
-		const tek2465_state& m_scope;
-	};
 
 	void debug_init();
 
@@ -247,7 +264,7 @@ private:
 	uint8_t m_pa1_shift = 0;
 	uint8_t m_pa2_shift = 0;
 
-	a4_board m_a4;
+	required_device<tek2465_a4_device> m_a4;
 
 	// Temporary to display the OSD only.
 	required_device<screen_device> m_screen;
@@ -283,6 +300,10 @@ private:
 	uint16_t m_holdoff = 0;
 };
 
+// TODO(siggi): Find a better place for this?
+static constexpr uint16_t SCREEN_WIDTH = 320;
+static constexpr uint16_t SCREEN_HEIGHT = 265;
+
 // Updates the state of attn with the 8 bit shift register reg.
 // Returns true if a relay change occurred.
 bool tek2465_state::attn::update(uint8_t shift_reg) {
@@ -302,16 +323,23 @@ bool tek2465_state::attn::update(uint8_t shift_reg) {
 	return changed;
 }
 
-tek2465_state::a4_board::a4_board(tek2465_state &scope) :
-	m_character_rom(scope, "character_rom"), m_scope(scope) {
+tek2465_a4_device::tek2465_a4_device(
+		const machine_config &config,
+		const char *tag,
+		device_t *owner,
+		u32 clock) :
+	device_t(config, TEK2465_A4_BOARD, tag, owner, clock),
+	// TODO(siggi): Fixme?
+	m_character_rom(*owner, "character_rom"),
+	m_scope(*dynamic_cast<tek2465_state*>(owner)) {
 }
 
-uint8_t tek2465_state::a4_board::ros_1_r() {
+uint8_t tek2465_a4_device::ros_1_r() {
 	ros_1_w(0x01);
 	return 0x01;
 }
 
-void tek2465_state::a4_board::ros_1_w(uint8_t data) {
+void tek2465_a4_device::ros_1_w(uint8_t data) {
 	// Any access to the ros_1 register latches
 	// the ros_2 shift register to the output.
 	m_ros_2_latch = m_ros_2_shift;
@@ -320,7 +348,7 @@ void tek2465_state::a4_board::ros_1_w(uint8_t data) {
 	m_ros_1.w |= BIT(data, 0);
 }
 
-void tek2465_state::a4_board::ros_2_w(uint8_t data) {
+void tek2465_a4_device::ros_2_w(uint8_t data) {
 	m_ros_2_shift <<= 1;
 	m_ros_2_shift |= BIT(data, 0);
 
@@ -338,7 +366,7 @@ void tek2465_state::a4_board::ros_2_w(uint8_t data) {
 	}
 }
 
-void tek2465_state::a4_board::render(bitmap_rgb32 &bitmap) {
+void tek2465_a4_device::render(bitmap_rgb32 &bitmap) {
 	const rgb_t green(0x00, 0xff, 0x00);
 
 	// Where to start the OSD in X.
@@ -415,6 +443,12 @@ void tek2465_state::a4_board::render(bitmap_rgb32 &bitmap) {
 	}
 }
 
+void tek2465_a4_device::device_start() {
+	save_item(NAME(m_ros_1.w));
+	save_item(NAME(m_ros_2_shift));
+	save_item(NAME(m_ros_2_latch));
+	save_item(NAME(m_ros_ram));
+}
 
 constexpr std::array<const char*, 16> ANALOG_SCANNED_TAGS = {
 	"HOLDOFF",
@@ -441,7 +475,7 @@ tek2465_state::tek2465_state(const machine_config& config, device_type type, con
 	m_earom(*this, "earom"),
 	m_samples(*this, "samples"),
 	m_front_panel_led_outputs(*this, "FP_LED%u", 0U),
-	m_a4(*this),
+	m_a4(*this, "a4"),
 	m_screen(*this, "screen"),
 	m_front_panel_rows(*this, "ROW%u", 0),
 	m_port_misc(*this, "MISC"),
@@ -453,6 +487,8 @@ void tek2465_state::tek2465(machine_config& config) {
 	M6808(config, m_maincpu, 5_MHz_XTAL);
 	ER1400(config, m_earom, 5_MHz_XTAL);
 	m_maincpu->set_addrmap(AS_PROGRAM, &tek2465_state::tek2465_map);
+
+	TEK2465_A4_BOARD(config, m_a4);
 
 	SPEAKER(config, "mono").front_center();
 	SAMPLES(config, m_samples);
@@ -752,11 +788,6 @@ void tek2465_state::machine_start() {
 	save_item(NAME(m_pa1_shift));
 	save_item(NAME(m_pa2_shift));
 
-	save_item(NAME(m_a4.m_ros_1.w));
-	save_item(NAME(m_a4.m_ros_2_shift));
-	save_item(NAME(m_a4.m_ros_2_latch));
-	save_item(NAME(m_a4.m_ros_ram));
-
 	save_item(NAME(m_neg_125_v));
 	save_item(NAME(m_a_tim_ref));
 	save_item(NAME(m_b_tim_ref));
@@ -798,9 +829,9 @@ void tek2465_state::tek2465_map(address_map& map) {
 	// PORT_1_CLK
 	map(0x08C0, 0x08FF).mirror(0x600).w(FUNC(tek2465_state::port_1_w));
 	// ROS_1_CLK
-	map(0x0900, 0x0935).mirror(0x600).rw(FUNC(tek2465_state::ros_1_r), FUNC(tek2465_state::ros_1_w));
+	map(0x0900, 0x0935).mirror(0x600).rw(m_a4, FUNC(tek2465_a4_device::ros_1_r), FUNC(tek2465_a4_device::ros_1_w));
 	// ROS_2_CLK
-	map(0x0940, 0x097f).mirror(0x600).w(FUNC(tek2465_state::ros_2_w));
+	map(0x0940, 0x097f).mirror(0x600).w(m_a4, FUNC(tek2465_a4_device::ros_2_w));
 	// PORT2_CLK
 	map(0x0980, 0x09BF).mirror(0x600).w(FUNC(tek2465_state::port_2_w));
 
@@ -896,6 +927,8 @@ void tek2465_state::port_2_w(uint8_t data) {
 	m_front_panel_led_outputs[32] = !BIT(data, 5);
 }
 
+// DO NOT SUBMIT
+#if 0
 uint8_t tek2465_state::ros_1_r() {
 	return m_a4.ros_1_r();
 }
@@ -907,6 +940,7 @@ void tek2465_state::ros_1_w(uint8_t data) {
 void tek2465_state::ros_2_w(uint8_t data) {
 	m_a4.ros_2_w(data);
 }
+#endif
 
 uint8_t tek2465_state::dmux_0_off_r() {
 	m_mux_0_disable = true;
@@ -933,7 +967,7 @@ uint8_t tek2465_state::port3_r() {
 
 	ret |= 0x00 << 0; // TODO(siggi): Implement TSO.
 	ret |= (comp_r() ? 0x02 : 0x00);
-	ret |= BIT(m_a4.m_ros_1.w, 15) << 2;
+	ret |= m_a4->ros_1_msb() << 2;
 	// TODO(siggi): Implement readout intensity pot and plumb in the RO ON.
 	ret |= m_port_ro_on->read();
 
@@ -1172,7 +1206,7 @@ uint32_t tek2465_state::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 	//    on update would be nice. The updates should probably also be
 	//    timed to the ROS counter that also does the IRQs.
 	bitmap.fill(0);
-	m_a4.render(bitmap);
+	m_a4->render(bitmap);
 	return 0;
 }
 
@@ -1380,8 +1414,6 @@ ROM_START(tek2465)
 	ROM_REGION(0x2000, "character_rom", 0)
 	ROM_LOAD("160-1631-02.bin", 0, 0x1000, CRC(a3da922b))
 ROM_END
-
-}  // namespace
 
 #define GAME_FLAGS  MACHINE_TYPE_OTHER|MACHINE_CLICKABLE_ARTWORK
 
