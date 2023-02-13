@@ -48,10 +48,17 @@ public:
 		return BIT(m_ros_1.w, 15);
 	}
 
+	auto dly_ref0_read() { return m_dly0_read_cb.bind(); }
+	auto dly_ref1_read() { return m_dly1_read_cb.bind(); }
+
 protected:
 	void device_start() override;
 
 private:
+	// Callbacks to read dly_ref0/1.
+	devcb_read16 m_dly0_read_cb;
+	devcb_read16 m_dly1_read_cb;
+
 	// Current value of the ROS1 shift register.
 	PAIR16 m_ros_1 = {};
 
@@ -65,12 +72,9 @@ private:
 
 	// The character ROM for the OSD.
 	required_memory_region m_character_rom;
-
-	const tek2465_state& m_scope;
 };
 
 DEFINE_DEVICE_TYPE(TEK2465_A4_BOARD, tek2465_a4_device, "tek_a4_board", "Tektronix 2465 A4 readout board.")
-
 
 class tek2465_state : public driver_device {
 public:
@@ -83,9 +87,6 @@ public:
 	DECLARE_INPUT_CHANGED_MEMBER(power_pressed);
 
 private:
-	// TODO(siggi): Fixme.
-	friend class tek2465_a4_device;
-
 	// Attenuator state.
 	struct attn {
 		bool update(uint8_t shift_reg);
@@ -95,7 +96,6 @@ private:
 		bool a_tenx_onex = false;
 		bool b_tenx_onex = false;
 	};
-
 
 	void debug_init();
 
@@ -173,8 +173,8 @@ private:
 	// Returns true if selected analog value is less than DAC value.
 	bool comp_r();
 
-	// Returns the DAC voltage yielded by 'code'.
-	float dac_volts(uint16_t code) const;
+	uint16_t dly_ref_0() const { return m_dly_ref_0; }
+	uint16_t dly_ref_1() const { return m_dly_ref_1; }
 
 	TIMER_CALLBACK_MEMBER(interrupt_timer);
 
@@ -301,6 +301,11 @@ private:
 static constexpr uint16_t SCREEN_WIDTH = 320;
 static constexpr uint16_t SCREEN_HEIGHT = 265;
 
+static float dac_volts(uint16_t code) {
+	// This is on the multiplexer side of the DAC, which is /Iout.
+	return 1.36 /*V*/ - 681 /* Ohms */ * 4e-3 /* mA */ * (4096 - code) / 4096.0;
+}
+
 // Updates the state of attn with the 8 bit shift register reg.
 // Returns true if a relay change occurred.
 bool tek2465_state::attn::update(uint8_t shift_reg) {
@@ -326,9 +331,9 @@ tek2465_a4_device::tek2465_a4_device(
 		device_t *owner,
 		u32 clock) :
 	device_t(config, TEK2465_A4_BOARD, tag, owner, clock),
-	// TODO(siggi): Fixme?
-	m_character_rom(*this, "character_rom"),
-	m_scope(*dynamic_cast<tek2465_state*>(owner)) {
+	m_dly0_read_cb(*this),
+	m_dly1_read_cb(*this),
+	m_character_rom(*this, "character_rom") {
 }
 
 uint8_t tek2465_a4_device::ros_1_r() {
@@ -413,18 +418,18 @@ void tek2465_a4_device::render(bitmap_rgb32 &bitmap) {
 
 					case 2: // Vert cursor 1.
 						x = col_offs + horiz;
-						y = m_scope.dac_volts(m_scope.m_dly_ref_1) * PIXELS_VOLT + SCREEN_HEIGHT / 2;
+						y = dac_volts(m_dly1_read_cb()) * PIXELS_VOLT + SCREEN_HEIGHT / 2;
 						break;
 					case 3: // Horiz cursor 1.
-						x = m_scope.dac_volts(m_scope.m_dly_ref_1) * PIXELS_VOLT + SCREEN_WIDTH / 2;
+						x = dac_volts(m_dly1_read_cb()) * PIXELS_VOLT + SCREEN_WIDTH / 2;
 						y = horiz;
 						break;
 					case 4: // Vert cursor 0.
 						x = col_offs + horiz;
-						y = m_scope.dac_volts(m_scope.m_dly_ref_0) * PIXELS_VOLT + SCREEN_HEIGHT / 2;
+						y = dac_volts(m_dly0_read_cb()) * PIXELS_VOLT + SCREEN_HEIGHT / 2;
 						break;
 					case 5: // Horiz cursor 0.
-						x = m_scope.dac_volts(m_scope.m_dly_ref_0) * PIXELS_VOLT + SCREEN_WIDTH / 2;
+						x = dac_volts(m_dly0_read_cb()) * PIXELS_VOLT + SCREEN_WIDTH / 2;
 						y = horiz;
 						break;
 
@@ -441,6 +446,9 @@ void tek2465_a4_device::render(bitmap_rgb32 &bitmap) {
 }
 
 void tek2465_a4_device::device_start() {
+	m_dly0_read_cb.resolve();
+	m_dly1_read_cb.resolve();
+
 	save_item(NAME(m_ros_1.w));
 	save_item(NAME(m_ros_2_shift));
 	save_item(NAME(m_ros_2_latch));
@@ -485,7 +493,10 @@ void tek2465_state::tek2465(machine_config& config) {
 	ER1400(config, m_earom, 5_MHz_XTAL);
 	m_maincpu->set_addrmap(AS_PROGRAM, &tek2465_state::tek2465_map);
 
+	// Create the A5 board device and hook it up to DLY_REF_0/1.
 	TEK2465_A4_BOARD(config, m_a4);
+	m_a4->dly_ref0_read().set(FUNC(tek2465_state::dly_ref_0));
+	m_a4->dly_ref1_read().set(FUNC(tek2465_state::dly_ref_1));
 
 	SPEAKER(config, "mono").front_center();
 	SAMPLES(config, m_samples);
@@ -1169,11 +1180,6 @@ bool tek2465_state::comp_r() {
 //	LOG("Scanned[%s]: %fV, DAC: %fV, out: %s\n", m_analog_scanned[index].finder_tag(),
 //			scanned_volts, dac_volts, out ? "true" : "false");
 	return out;
-}
-
-float tek2465_state::dac_volts(uint16_t code) const {
-	// This is on the multiplexer side of the DAC, which is /Iout.
-	return 1.36 /*V*/ - 681 /* Ohms */ * 4e-3 /* mA */ * (4096 - code) / 4096.0;
 }
 
 TIMER_CALLBACK_MEMBER(tek2465_state::interrupt_timer) {
