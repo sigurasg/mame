@@ -31,11 +31,7 @@ class tek2465_state;
 // Readout board state.
 class tek2465_a4_device : public device_t {
 public:
-	tek2465_a4_device(
-		const machine_config &config,
-		const char *tag,
-		device_t *owner,
-		u32 clock = 0U);
+	tek2465_a4_device(const machine_config &config, const char *tag, device_t *owner, u32 clock = 0U);
 
 	uint8_t ros_1_r();
 	void ros_1_w(uint8_t data);
@@ -74,7 +70,54 @@ private:
 	required_memory_region m_character_rom;
 };
 
-DEFINE_DEVICE_TYPE(TEK2465_A4_BOARD, tek2465_a4_device, "tek_a4_board", "Tektronix 2465 A4 readout board.")
+DEFINE_DEVICE_TYPE(TEK2465_A4_BOARD, tek2465_a4_device, "tek_a4_board", "Tek 2465 A4 readout board")
+
+// Display sequencer state.
+class tek2465_display_sequencer_device : public device_t {
+public:
+	tek2465_display_sequencer_device(const machine_config &config, const char *tag, device_t *owner, u32 clock = 0U);
+
+	// The input clock register is strobed by reading or writing a register
+	// address. It would be more accurate to model this as a line and
+	// toggle it from read/write.
+	uint8_t cc_r() {
+		// Reset the TSO shift register.
+		m_tso_bits_remaining = 0;
+		m_input_reg = BIT((m_input_reg << 1) | m_input_bit_cb(), 0, 55);
+		return 0x01;
+	}
+	void cc_w(uint8_t data) { cc_r(); }
+
+	uint8_t tss_r();
+	void tss_w(uint8_t data) { tss_r(); }
+
+	// Returns the MSB of the trigger status shift register.
+	uint8_t tso() { return BIT(m_tso_shift, 15); }
+
+	auto input_bit() { return m_input_bit_cb.bind(); }
+
+protected:
+	void device_start() override;
+
+private:
+	void debug_ds(const std::vector<std::string_view> &params);
+
+	devcb_read8 m_input_bit_cb;
+
+	// The current value of the DS shift register.
+	// Only the bottom 55 bits are used.
+	uint64_t m_input_reg = 0;
+
+	// The trigger status register.
+	//   0x0001: single sweep not complete.
+	//   0x0800; A triggered.
+	uint16_t m_tso = 0;
+	// Number of bits left to shift out.
+	uint8_t m_tso_bits_remaining = 0;
+	uint16_t m_tso_shift = 0;
+};
+
+DEFINE_DEVICE_TYPE(TEK2465_DISPLAY_SEQUENCER, tek2465_display_sequencer_device, "tek_display_sequencer", "Tek 155-0244-00 display sequencer")
 
 class tek2465_state : public driver_device {
 public:
@@ -141,8 +184,6 @@ private:
 	void dmux_1_on_w(uint8_t data);
 	uint8_t led_r();
 	void led_w(uint8_t data);
-	uint8_t disp_seq_r();
-	void disp_seq_w(uint8_t data);
 
 	uint8_t attn_r();
 	void attn_w(uint8_t data);
@@ -158,8 +199,6 @@ private:
 	void b_trig_w(uint8_t data);
 	uint8_t a_trig_r();
 	void a_trig_w(uint8_t data);
-	uint8_t trig_stat_strb_r();
-	void trig_stat_strb_w(uint8_t data);
 
 	void dmux_0_update_dac();
 	void dmux_1_update_dac();
@@ -175,6 +214,7 @@ private:
 
 	uint16_t dly_ref_0() const { return m_dly_ref_0; }
 	uint16_t dly_ref_1() const { return m_dly_ref_1; }
+	uint8_t cont_data() const { return BIT(m_port_2, 0); }
 
 	TIMER_CALLBACK_MEMBER(interrupt_timer);
 
@@ -207,18 +247,7 @@ private:
 	bool m_mux_0_disable = true;
 	bool m_mux_1_disable = true;
 
-	//////////////////////////////////////////////////////////////////////
-	// Display sequencer state.
-	//////////////////////////////////////////////////////////////////////
-	// The current value of the DS shift register.
-	// Only the bottom 55 bits are used.
-	uint64_t m_ds_shift = 0;
-	// The trigger status register.
-	// Number of bits left in the register.
-	// TODO(siggi): It looks like the firmware shifts 16 bits out of this
-	//    register each interrupt, though some interrupts read 32 bits.
-	// uint8_t m_ds_tso_shift_num = 0;
-	// uint16_t m_ds_tso_shift = 0;
+	required_device<tek2465_display_sequencer_device> m_ds;
 
 	//////////////////////////////////////////////////////////////////////
 	// Sweep hybrid state.
@@ -323,6 +352,78 @@ bool tek2465_state::attn::update(uint8_t shift_reg) {
 	}
 
 	return changed;
+}
+
+tek2465_display_sequencer_device::tek2465_display_sequencer_device(const machine_config &config, const char *tag, device_t *owner, u32 clock) :
+	device_t(config, TEK2465_DISPLAY_SEQUENCER, tag, owner, clock),
+	m_input_bit_cb(*this) {
+}
+
+uint8_t tek2465_display_sequencer_device::tss_r() {
+	if (m_tso_bits_remaining == 0) {
+		m_tso_shift = m_tso;
+		m_tso_bits_remaining = 15;
+	} else {
+		m_tso_shift <<= 1;
+		--m_tso_bits_remaining;
+	}
+	return 0x01;
+}
+
+void tek2465_display_sequencer_device::device_start() {
+	m_input_bit_cb.resolve();
+
+	save_item(NAME(m_input_reg));
+	save_item(NAME(m_tso));
+	save_item(NAME(m_tso_bits_remaining));
+	save_item(NAME(m_tso_shift));
+
+	if (machine().debug_flags & DEBUG_FLAG_ENABLED) {
+		using namespace std::placeholders;
+
+		debugger_console& con = machine().debugger().console();
+
+		con.register_command("ds", CMDFLAG_NONE, 0, 0, std::bind(&tek2465_display_sequencer_device::debug_ds, this, _1));
+	}
+}
+
+void tek2465_display_sequencer_device::debug_ds(const std::vector<std::string_view> &params) {
+	debugger_console &con = machine().debugger().console();
+
+	con.printf("DS SHIFT: 0x%08X\n", m_input_reg);
+	con.printf("  MS10-14: 0x%02X\n", bitswap(m_input_reg, 4, 3, 2, 1, 0));
+	con.printf("  DS10-14: 0x%02X\n", bitswap(m_input_reg, 5, 6, 7, 8, 9));
+	con.printf("  TH0-4: 0x%02X\n", bitswap(m_input_reg, 10, 11, 12, 13, 14));
+	con.printf("  EXT-SWP: %X\n", BIT(m_input_reg, 15));
+	con.printf("  DL-END_MAIN: %X\n", BIT(m_input_reg, 16));
+	con.printf("  DISP-BLANK: %X\n", BIT(m_input_reg, 17));
+	con.printf("  ATS0: %X\n", BIT(m_input_reg, 18));
+	con.printf("  ATS1: %X\n", BIT(m_input_reg, 19));
+	con.printf("  ICT: %X\n", BIT(m_input_reg, 20));
+	con.printf("  ICS: %X\n", BIT(m_input_reg, 21));
+	con.printf("  Single Sequence: %X\n", BIT(m_input_reg, 22));
+	con.printf("  Include VDS1: %X\n", BIT(m_input_reg, 23));
+	con.printf("  Include VDS2: %X\n", BIT(m_input_reg, 24));
+	con.printf("  Include VDS12: %X\n", BIT(m_input_reg, 25));
+	con.printf("  Include VDS3: %X\n", BIT(m_input_reg, 26));
+	con.printf("  Include VDS4: %X\n", BIT(m_input_reg, 27));
+	con.printf("  MX: %X\n", BIT(m_input_reg, 28));
+	con.printf("  MD: %X\n", BIT(m_input_reg, 29));
+	con.printf("  MM: %X\n", BIT(m_input_reg, 30));
+	con.printf("  HDS1: %X\n", BIT(m_input_reg, 31));
+	con.printf("  HDS2: %X\n", BIT(m_input_reg, 32));
+	con.printf("  HDS3: %X\n", BIT(m_input_reg, 33));
+	con.printf("  HDS5: %X\n", BIT(m_input_reg, 34));
+	con.printf("  HDS6: %X\n", BIT(m_input_reg, 35));
+	con.printf("  HDS7: %X\n", BIT(m_input_reg, 36));
+	con.printf("  Slave delta: %X\n", BIT(m_input_reg, 37));
+	con.printf("  VT0-2: 0x%02X\n", bitswap(m_input_reg, 40, 39, 38));
+	con.printf("  CSR0-2M: 0x%02X\n", bitswap(m_input_reg, 43, 42, 41));
+	con.printf("  CSR0-2D: 0x%02X\n", bitswap(m_input_reg, 46, 45, 44));
+	con.printf("  Counter test: %X\n", BIT(m_input_reg, 47));
+	con.printf("  CP0-4: 0x%02X\n", bitswap(m_input_reg, 52, 52, 50, 49, 48));
+	con.printf("  CHL: %X\n", BIT(m_input_reg, 53));
+	con.printf("  CHM: %X\n", BIT(m_input_reg, 54));
 }
 
 tek2465_a4_device::tek2465_a4_device(
@@ -480,6 +581,7 @@ tek2465_state::tek2465_state(const machine_config& config, device_type type, con
 	m_earom(*this, "earom"),
 	m_samples(*this, "samples"),
 	m_front_panel_led_outputs(*this, "FP_LED%u", 0U),
+	m_ds(*this, "ds"),
 	m_a4(*this, "a4"),
 	m_screen(*this, "screen"),
 	m_front_panel_rows(*this, "ROW%u", 0),
@@ -492,6 +594,9 @@ void tek2465_state::tek2465(machine_config& config) {
 	M6808(config, m_maincpu, 5_MHz_XTAL);
 	ER1400(config, m_earom, 5_MHz_XTAL);
 	m_maincpu->set_addrmap(AS_PROGRAM, &tek2465_state::tek2465_map);
+
+	TEK2465_DISPLAY_SEQUENCER(config, m_ds);
+	m_ds->input_bit().set(FUNC(tek2465_state::cont_data));
 
 	// Create the A5 board device and hook it up to DLY_REF_0/1.
 	TEK2465_A4_BOARD(config, m_a4);
@@ -529,7 +634,6 @@ void tek2465_state::debug_init() {
 
 		debugger_console& con = machine().debugger().console();
 
-		con.register_command("ds", CMDFLAG_NONE, 0, 0, std::bind(&tek2465_state::debug_ds, this, _1));
 		con.register_command("sweep", CMDFLAG_NONE, 0, 0, std::bind(&tek2465_state::debug_sweep, this, _1));
 		con.register_command("trig", CMDFLAG_NONE, 0, 0, std::bind(&tek2465_state::debug_trigger, this, _1));
 		con.register_command("port1", CMDFLAG_NONE, 0, 0, std::bind(&tek2465_state::debug_port1, this, _1));
@@ -538,45 +642,6 @@ void tek2465_state::debug_init() {
 		con.register_command("sh", CMDFLAG_NONE, 0, 0, std::bind(&tek2465_state::debug_sh, this, _1));
 		con.register_command("pot", CMDFLAG_NONE, 0, 2, std::bind(&tek2465_state::debug_pot, this, _1));
 	}
-}
-
-void tek2465_state::debug_ds(const std::vector<std::string_view> &params) {
-	debugger_console &con = machine().debugger().console();
-
-	con.printf("DS SHIFT: 0x%08X\n", m_ds_shift);
-	con.printf("  MS10-14: 0x%02X\n", bitswap(m_ds_shift, 4, 3, 2, 1, 0));
-	con.printf("  DS10-14: 0x%02X\n", bitswap(m_ds_shift, 5, 6, 7, 8, 9));
-	con.printf("  TH0-4: 0x%02X\n", bitswap(m_ds_shift, 10, 11, 12, 13, 14));
-	con.printf("  EXT-SWP: %X\n", BIT(m_ds_shift, 15));
-	con.printf("  DL-END_MAIN: %X\n", BIT(m_ds_shift, 16));
-	con.printf("  DISP-BLANK: %X\n", BIT(m_ds_shift, 17));
-	con.printf("  ATS0: %X\n", BIT(m_ds_shift, 18));
-	con.printf("  ATS1: %X\n", BIT(m_ds_shift, 19));
-	con.printf("  ICT: %X\n", BIT(m_ds_shift, 20));
-	con.printf("  ICS: %X\n", BIT(m_ds_shift, 21));
-	con.printf("  Single Sequence: %X\n", BIT(m_ds_shift, 22));
-	con.printf("  Include VDS1: %X\n", BIT(m_ds_shift, 23));
-	con.printf("  Include VDS2: %X\n", BIT(m_ds_shift, 24));
-	con.printf("  Include VDS12: %X\n", BIT(m_ds_shift, 25));
-	con.printf("  Include VDS3: %X\n", BIT(m_ds_shift, 26));
-	con.printf("  Include VDS4: %X\n", BIT(m_ds_shift, 27));
-	con.printf("  MX: %X\n", BIT(m_ds_shift, 28));
-	con.printf("  MD: %X\n", BIT(m_ds_shift, 29));
-	con.printf("  MM: %X\n", BIT(m_ds_shift, 30));
-	con.printf("  HDS1: %X\n", BIT(m_ds_shift, 31));
-	con.printf("  HDS2: %X\n", BIT(m_ds_shift, 32));
-	con.printf("  HDS3: %X\n", BIT(m_ds_shift, 33));
-	con.printf("  HDS5: %X\n", BIT(m_ds_shift, 34));
-	con.printf("  HDS6: %X\n", BIT(m_ds_shift, 35));
-	con.printf("  HDS7: %X\n", BIT(m_ds_shift, 36));
-	con.printf("  Slave delta: %X\n", BIT(m_ds_shift, 37));
-	con.printf("  VT0-2: 0x%02X\n", bitswap(m_ds_shift, 40, 39, 38));
-	con.printf("  CSR0-2M: 0x%02X\n", bitswap(m_ds_shift, 43, 42, 41));
-	con.printf("  CSR0-2D: 0x%02X\n", bitswap(m_ds_shift, 46, 45, 44));
-	con.printf("  Counter test: %X\n", BIT(m_ds_shift, 47));
-	con.printf("  CP0-4: 0x%02X\n", bitswap(m_ds_shift, 52, 52, 50, 49, 48));
-	con.printf("  CHL: %X\n", BIT(m_ds_shift, 53));
-	con.printf("  CHM: %X\n", BIT(m_ds_shift, 54));
 }
 
 void tek2465_state::debug_sweep(const std::vector<std::string_view> &params)  {
@@ -773,8 +838,6 @@ void tek2465_state::machine_start() {
 	save_item(NAME(m_front_panel_leds));
 	save_item(NAME(m_dac.w));
 
-	save_item(NAME(m_ds_shift));
-
 	save_item(NAME(m_swp_a_shift));
 	save_item(NAME(m_swp_b_shift));
 
@@ -858,7 +921,7 @@ void tek2465_state::tek2465_map(address_map& map) {
 	// LED_CLK
 	map(0x09C6, 0x09C6).mirror(0x630).rw(FUNC(tek2465_state::led_r), FUNC(tek2465_state::led_w));
 	// DISP_SEC_CLK
-	map(0x09C7, 0x09C7).mirror(0x630).rw(FUNC(tek2465_state::disp_seq_r), FUNC(tek2465_state::disp_seq_w));
+	map(0x09C7, 0x09C7).mirror(0x630).rw(m_ds, FUNC(tek2465_display_sequencer_device::cc_r), FUNC(tek2465_display_sequencer_device::cc_w));
 	// ATTN_CLK
 	map(0x09C8, 0x09C8).mirror(0x630).rw(FUNC(tek2465_state::attn_r), FUNC(tek2465_state::attn_w));
 	// CH_2_PA_CLK
@@ -874,7 +937,7 @@ void tek2465_state::tek2465_map(address_map& map) {
 	// A_TRIG_CLK
 	map(0x09CE, 0x09CE).mirror(0x630).rw(FUNC(tek2465_state::a_trig_r), FUNC(tek2465_state::a_trig_w));
 	// TRIG_STAT_STRB
-	map(0x09CF, 0x09CF).mirror(0x630).rw(FUNC(tek2465_state::trig_stat_strb_r), FUNC(tek2465_state::trig_stat_strb_w));
+	map(0x09CF, 0x09CF).mirror(0x630).rw(m_ds, FUNC(tek2465_display_sequencer_device::tss_r), FUNC(tek2465_display_sequencer_device::tss_w));
 
 	// TODO(siggi): Options from 0x1000-0x7FFF.
 	map(0x1000, 0x7FFF).unmaprw();
@@ -958,7 +1021,7 @@ void tek2465_state::dmux_0_on_w(uint8_t data) {
 uint8_t tek2465_state::port3_r() {
 	uint8_t ret = 0;
 
-	ret |= 0x00 << 0; // TODO(siggi): Implement TSO.
+	ret |= m_ds->tso() << 0; // TODO(siggi): Implement TSO.
 	ret |= (comp_r() ? 0x02 : 0x00);
 	ret |= m_a4->ros_1_msb() << 2;
 	// TODO(siggi): Implement readout intensity pot and plumb in the RO ON.
@@ -1009,15 +1072,6 @@ uint8_t tek2465_state::led_r() {
 
 void tek2465_state::led_w(uint8_t data) {
 	led_r();
-}
-
-uint8_t tek2465_state::disp_seq_r() {
-	m_ds_shift = BIT((m_ds_shift << 1) | BIT(m_port_2, 0), 0, 55);
-	return 0x01;
-}
-
-void tek2465_state::disp_seq_w(uint8_t data) {
-	disp_seq_r();
 }
 
 uint8_t tek2465_state::attn_r() {
@@ -1073,24 +1127,6 @@ uint8_t tek2465_state::a_trig_r() {
  }
 void tek2465_state::a_trig_w(uint8_t data) {
 	a_trig_r();
-}
-
-uint8_t tek2465_state::trig_stat_strb_r() {
-	static uint64_t old_ds_shift = 0;
-
-	// The firmware is checking the trigger status.
-	// This is an opportune time to log any register
-	// changes.
-	if (m_ds_shift != old_ds_shift) {
-		old_ds_shift = m_ds_shift;
-		LOG("DS: 0x%08X\n", m_ds_shift);
-	}
-
-	return 0x01;
-}
-
-void tek2465_state::trig_stat_strb_w(uint8_t data) {
-	trig_stat_strb_r();
 }
 
 void tek2465_state::dmux_0_update_dac() {
