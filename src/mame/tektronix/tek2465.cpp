@@ -119,18 +119,40 @@ private:
 
 DEFINE_DEVICE_TYPE(TEK2465_DISPLAY_SEQUENCER, tek2465_display_sequencer_device, "tek_display_sequencer", "Tek 155-0244-00 display sequencer")
 
-#if 0 // DO NOT SUBMIT
 // The sweep hybrid state.
+// Each sweep hybrid conains one each
+// - 203-0231-90 die
+// - 203-0214-90 die
+// plus some discrete components. The former of these contains a 7 bit
+// shift register, which is modeled here.
 class tek2465_sweep_hybrid_device: public device_t {
 public:
 	tek2465_sweep_hybrid_device(const machine_config &config, const char *tag, device_t *owner, u32 clock = 0U);
 
+	// The input clock register is strobed by reading or writing a register
+	// address. It would be more accurate to model this as a line and
+	// toggle it from read/write.
+	uint8_t cc_r() {
+		m_reg = BIT((m_reg << 1) | m_input_bit_cb(), 0, 7);
+		return 0x01;
+	}
+
+	void cc_w(uint8_t data) { cc_r(); }
+
+	auto input_bit() { return m_input_bit_cb.bind(); }
+
 protected:
 	void device_start() override;
+
+private:
+	void debug(const std::vector<std::string_view> &params);
+
+	devcb_read8 m_input_bit_cb;
+
+	uint8_t m_reg = 0;
 };
 
 DEFINE_DEVICE_TYPE(TEK2465_SWEEP_HYBRID, tek2465_sweep_hybrid_device, "tek_sweep_hybrid", "Tek 155-0240-00 sweep hybrid")
-#endif
 
 // Models the 203-0213-90 trigger die.
 // The 155-0239-00 trigger hybrid contains two of these, one each for
@@ -143,7 +165,6 @@ public:
 	// address. It would be more accurate to model this as a line and
 	// toggle it from read/write.
 	uint8_t cc_r() {
-		// Reset the TSO shift register.
 		m_reg = (m_reg << 1) | m_input_bit_cb();
 		return 0x01;
 	}
@@ -192,8 +213,6 @@ private:
 	// Register debug dumpers.
 	// Display sequencer shift register breakdown.
 	void debug_ds(const std::vector<std::string_view> &params);
-	// Sweep hybrid register breakdown.
-	void debug_sweep(const std::vector<std::string_view> &params);
 	// Port 1/2 breakdown.
 	void debug_port1(const std::vector<std::string_view> &params);
 	void debug_port2(const std::vector<std::string_view> &params);
@@ -236,10 +255,6 @@ private:
 	void ch2_pa_w(uint8_t data);
 	uint8_t ch1_pa_r();
 	void ch1_pa_w(uint8_t data);
-	uint8_t b_swp_r();
-	void b_swp_w(uint8_t data);
-	uint8_t a_swp_r();
-	void a_swp_w(uint8_t data);
 	void dmux_0_update_dac();
 	void dmux_1_update_dac();
 
@@ -289,16 +304,9 @@ private:
 
 	required_device<tek2465_display_sequencer_device> m_ds;
 
-	//////////////////////////////////////////////////////////////////////
 	// Sweep hybrid state.
-	// Each sweep hybrid conains one each
-	// - 203-0231-90 die
-	// - 203-0214-90 die
-	// plus some discrete components. The former of these contains a 7 bit
-	// shift register, which is modeled here.
-	//////////////////////////////////////////////////////////////////////
-	uint8_t m_swp_a_shift = 0;
-	uint8_t m_swp_b_shift = 0;
+	required_device<tek2465_sweep_hybrid_device> m_swp_a;
+	required_device<tek2465_sweep_hybrid_device> m_swp_b;
 
 	// Trigger hybrid state.
 	// The trigger hybrid contains two "203-0213-90" dies, one each for the
@@ -392,6 +400,31 @@ bool tek2465_state::attn::update(uint8_t shift_reg) {
 	}
 
 	return changed;
+}
+
+tek2465_sweep_hybrid_device::tek2465_sweep_hybrid_device(const machine_config &config, const char *tag, device_t *owner, u32 clock) :
+	device_t(config, TEK2465_SWEEP_HYBRID, tag, owner, clock),
+	m_input_bit_cb(*this) {
+}
+
+void tek2465_sweep_hybrid_device::device_start() {
+	m_input_bit_cb.resolve();
+
+	save_item(NAME(m_reg));
+
+	debugger_console& con = machine().debugger().console();
+	// Register as the device tag, excluding the starting colon.
+	con.register_command(tag() + 1, CMDFLAG_NONE, 0, 0, std::bind(&tek2465_sweep_hybrid_device::debug, this, std::placeholders::_1));
+}
+
+void tek2465_sweep_hybrid_device::debug(const std::vector<std::string_view> &params) {
+	debugger_console &con = machine().debugger().console();
+
+	con.printf("%s: 0x%02X\n", tag(), m_reg);
+	con.printf("  Timing Resistor: %d\n", BIT(m_reg, 0, 2));
+	con.printf("  Timing Capacitor: %d\n", BIT(m_reg, 2, 2));
+	con.printf("  Timing Current: %d\n", BIT(m_reg, 4, 2));
+	con.printf("  Not Enable Sweep Gate Output: %d\n", BIT(m_reg, 6));
 }
 
 tek2465_trigger_die_device::tek2465_trigger_die_device(const machine_config &config, const char *tag, device_t *owner, u32 clock) :
@@ -651,6 +684,8 @@ tek2465_state::tek2465_state(const machine_config& config, device_type type, con
 	m_samples(*this, "samples"),
 	m_front_panel_led_outputs(*this, "FP_LED%u", 0U),
 	m_ds(*this, "ds"),
+	m_swp_a(*this, "swp_a"),
+	m_swp_b(*this, "swp_b"),
 	m_trig_a(*this, "trig_a"),
 	m_trig_b(*this, "trig_b"),
 	m_a4(*this, "a4"),
@@ -668,6 +703,12 @@ void tek2465_state::tek2465(machine_config& config) {
 
 	TEK2465_DISPLAY_SEQUENCER(config, m_ds);
 	m_ds->input_bit().set(FUNC(tek2465_state::cont_data));
+
+	TEK2465_SWEEP_HYBRID(config, m_swp_a);
+	m_swp_a->input_bit().set(FUNC(tek2465_state::cont_data));
+
+	TEK2465_SWEEP_HYBRID(config, m_swp_b);
+	m_swp_b->input_bit().set(FUNC(tek2465_state::cont_data));
 
 	TEK2465_TRIGGER_DIE(config, m_trig_a);
 	m_trig_a->input_bit().set(FUNC(tek2465_state::cont_data));
@@ -711,28 +752,12 @@ void tek2465_state::debug_init() {
 
 		debugger_console& con = machine().debugger().console();
 
-		con.register_command("sweep", CMDFLAG_NONE, 0, 0, std::bind(&tek2465_state::debug_sweep, this, _1));
 		con.register_command("port1", CMDFLAG_NONE, 0, 0, std::bind(&tek2465_state::debug_port1, this, _1));
 		con.register_command("port2", CMDFLAG_NONE, 0, 0, std::bind(&tek2465_state::debug_port2, this, _1));
 		con.register_command("pa", CMDFLAG_NONE, 0, 0, std::bind(&tek2465_state::debug_pa, this, _1));
 		con.register_command("sh", CMDFLAG_NONE, 0, 0, std::bind(&tek2465_state::debug_sh, this, _1));
 		con.register_command("pot", CMDFLAG_NONE, 0, 2, std::bind(&tek2465_state::debug_pot, this, _1));
 	}
-}
-
-void tek2465_state::debug_sweep(const std::vector<std::string_view> &params)  {
-	auto print_sweep_state = [this](const char* name, uint8_t state) {
-		debugger_console &con = machine().debugger().console();
-		con.printf("SWEEP%s: 0x%02X\n", name, state);
-
-		con.printf("  Timing Resistor: %d\n", BIT(state, 0, 2));
-		con.printf("  Timing Capacitor: %d\n", BIT(state, 2, 2));
-		con.printf("  Timing Current: %d\n", BIT(state, 4, 2));
-		con.printf("  Not Enable Sweep Gate Output: %d\n", BIT(state, 6));
-	};
-
-	print_sweep_state("A", m_swp_a_shift);
-	print_sweep_state("B", m_swp_b_shift);
 }
 
 void tek2465_state::debug_port1(const std::vector<std::string_view> &params) {
@@ -894,9 +919,6 @@ void tek2465_state::machine_start() {
 	save_item(NAME(m_front_panel_leds));
 	save_item(NAME(m_dac.w));
 
-	save_item(NAME(m_swp_a_shift));
-	save_item(NAME(m_swp_b_shift));
-
 	save_item(NAME(m_attn_shift));
 
 	save_item(NAME(ch1.dc_ac));
@@ -982,9 +1004,9 @@ void tek2465_state::tek2465_map(address_map& map) {
 	// CH_1_PA_CLK
 	map(0x09CA, 0x09CA).mirror(0x630).rw(FUNC(tek2465_state::ch1_pa_r), FUNC(tek2465_state::ch1_pa_w));
 	// B_SWP_CLK
-	map(0x09CB, 0x09CB).mirror(0x630).rw(FUNC(tek2465_state::b_swp_r), FUNC(tek2465_state::b_swp_w));
+	map(0x09CB, 0x09CB).mirror(0x630).rw(m_swp_b, FUNC(tek2465_sweep_hybrid_device::cc_r), FUNC(tek2465_sweep_hybrid_device::cc_w));
 	// A_SWP_CLK
-	map(0x09CC, 0x09CC).mirror(0x630).rw(FUNC(tek2465_state::a_swp_r), FUNC(tek2465_state::a_swp_w));
+	map(0x09CC, 0x09CC).mirror(0x630).rw(m_swp_a, FUNC(tek2465_sweep_hybrid_device::cc_r), FUNC(tek2465_sweep_hybrid_device::cc_w));
 	// B_TRIG_CLK
 	map(0x09CD, 0x09CD).mirror(0x630).rw(m_trig_b, FUNC(tek2465_trigger_die_device::cc_r), FUNC(tek2465_trigger_die_device::cc_w));
 	// A_TRIG_CLK
@@ -1148,22 +1170,6 @@ uint8_t tek2465_state::ch1_pa_r() {
 }
 void tek2465_state::ch1_pa_w(uint8_t data) {
 	ch1_pa_r();
-}
-
-uint8_t tek2465_state::b_swp_r() {
-	m_swp_b_shift = BIT((m_swp_b_shift << 1) | BIT(m_port_2, 0), 0, 7);
-	return 0x01;
-}
-void tek2465_state::b_swp_w(uint8_t data) {
-	b_swp_r();
-}
-
-uint8_t tek2465_state::a_swp_r() {
-	m_swp_a_shift = BIT((m_swp_a_shift << 1) | BIT(m_port_2, 0), 0, 7);
-	return 0x01;
-}
-void tek2465_state::a_swp_w(uint8_t data) {
-	a_swp_r();
 }
 
 void tek2465_state::dmux_0_update_dac() {
