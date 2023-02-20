@@ -119,6 +119,53 @@ private:
 
 DEFINE_DEVICE_TYPE(TEK2465_DISPLAY_SEQUENCER, tek2465_display_sequencer_device, "tek_display_sequencer", "Tek 155-0244-00 display sequencer")
 
+#if 0 // DO NOT SUBMIT
+// The sweep hybrid state.
+class tek2465_sweep_hybrid_device: public device_t {
+public:
+	tek2465_sweep_hybrid_device(const machine_config &config, const char *tag, device_t *owner, u32 clock = 0U);
+
+protected:
+	void device_start() override;
+};
+
+DEFINE_DEVICE_TYPE(TEK2465_SWEEP_HYBRID, tek2465_sweep_hybrid_device, "tek_sweep_hybrid", "Tek 155-0240-00 sweep hybrid")
+#endif
+
+// Models the 203-0213-90 trigger die.
+// The 155-0239-00 trigger hybrid contains two of these, one each for
+// the A and B trigger
+class tek2465_trigger_die_device: public device_t {
+public:
+	tek2465_trigger_die_device(const machine_config &config, const char *tag, device_t *owner, u32 clock = 0U);
+
+	// The input clock register is strobed by reading or writing a register
+	// address. It would be more accurate to model this as a line and
+	// toggle it from read/write.
+	uint8_t cc_r() {
+		// Reset the TSO shift register.
+		m_reg = (m_reg << 1) | m_input_bit_cb();
+		return 0x01;
+	}
+
+	void cc_w(uint8_t data) { cc_r(); }
+
+	auto input_bit() { return m_input_bit_cb.bind(); }
+
+protected:
+	void device_start() override;
+
+private:
+	void debug(const std::vector<std::string_view> &params);
+
+	devcb_read8 m_input_bit_cb;
+
+	// The trigger die contains an 8 bit shift register.
+	uint8_t m_reg = 0;
+};
+
+DEFINE_DEVICE_TYPE(TEK2465_TRIGGER_DIE, tek2465_trigger_die_device, "tek_trigger_die", "Tek 203-0213-90 trigger die")
+
 class tek2465_state : public driver_device {
 public:
 	tek2465_state(const machine_config& config, device_type type, const char* tag);
@@ -147,8 +194,6 @@ private:
 	void debug_ds(const std::vector<std::string_view> &params);
 	// Sweep hybrid register breakdown.
 	void debug_sweep(const std::vector<std::string_view> &params);
-	// Trigger hybrid register breakdown.
-	void debug_trigger(const std::vector<std::string_view> &params);
 	// Port 1/2 breakdown.
 	void debug_port1(const std::vector<std::string_view> &params);
 	void debug_port2(const std::vector<std::string_view> &params);
@@ -195,11 +240,6 @@ private:
 	void b_swp_w(uint8_t data);
 	uint8_t a_swp_r();
 	void a_swp_w(uint8_t data);
-	uint8_t b_trig_r();
-	void b_trig_w(uint8_t data);
-	uint8_t a_trig_r();
-	void a_trig_w(uint8_t data);
-
 	void dmux_0_update_dac();
 	void dmux_1_update_dac();
 
@@ -262,9 +302,9 @@ private:
 
 	// Trigger hybrid state.
 	// The trigger hybrid contains two "203-0213-90" dies, one each for the
-	// A and B trigger. Each die contains an 8 bit shift register.
-	uint8_t m_trig_a_shift = 0;
-	uint8_t m_trig_b_shift = 0;
+	// A and B trigger.
+	required_device<tek2465_trigger_die_device> m_trig_a;
+	required_device<tek2465_trigger_die_device> m_trig_b;
 
 	// Attenuator shift register.
 	// Various bits of this shift register are used for misc settings on
@@ -352,6 +392,35 @@ bool tek2465_state::attn::update(uint8_t shift_reg) {
 	}
 
 	return changed;
+}
+
+tek2465_trigger_die_device::tek2465_trigger_die_device(const machine_config &config, const char *tag, device_t *owner, u32 clock) :
+	device_t(config, TEK2465_TRIGGER_DIE, tag, owner, clock),
+	m_input_bit_cb(*this) {
+}
+
+void tek2465_trigger_die_device::device_start() {
+	m_input_bit_cb.resolve();
+
+	save_item(NAME(m_reg));
+
+	debugger_console& con = machine().debugger().console();
+	// Register as the device tag, excluding the starting colon.
+	con.register_command(tag() + 1, CMDFLAG_NONE, 0, 0, std::bind(&tek2465_trigger_die_device::debug, this, std::placeholders::_1));
+}
+
+void tek2465_trigger_die_device::debug(const std::vector<std::string_view> &params) {
+	debugger_console &con = machine().debugger().console();
+
+	con.printf("%s: 0x%02X\n", tag(), m_reg);
+	con.printf("  -TM0, Not Trigger Mode LSB: %d\n", BIT(m_reg, 0));
+	con.printf("  -TSM1, Not Trigger Mode MSB: %d\n", BIT(m_reg, 1));
+	con.printf("  -FR, Not Free Run, Continuous Trigger Gate: %d\n", BIT(m_reg, 2));
+	con.printf("  -HFR, Not Insert 50kHz Low Pass: %d\n", BIT(m_reg, 3));
+	con.printf("  -LFT, Not Insert 50kHz High Pass: %d\n", BIT(m_reg, 4));
+	con.printf("  -AC, Not Insert 20 Hz High Pass: %d\n", BIT(m_reg, 5));
+	con.printf("  SL1, Slope for Not Delay Select = 1: %d\n", BIT(m_reg, 6));
+	con.printf("  SL0, Slope for Not Delay Select = 0: %d\n", BIT(m_reg, 7));
 }
 
 tek2465_display_sequencer_device::tek2465_display_sequencer_device(const machine_config &config, const char *tag, device_t *owner, u32 clock) :
@@ -582,6 +651,8 @@ tek2465_state::tek2465_state(const machine_config& config, device_type type, con
 	m_samples(*this, "samples"),
 	m_front_panel_led_outputs(*this, "FP_LED%u", 0U),
 	m_ds(*this, "ds"),
+	m_trig_a(*this, "trig_a"),
+	m_trig_b(*this, "trig_b"),
 	m_a4(*this, "a4"),
 	m_screen(*this, "screen"),
 	m_front_panel_rows(*this, "ROW%u", 0),
@@ -597,6 +668,12 @@ void tek2465_state::tek2465(machine_config& config) {
 
 	TEK2465_DISPLAY_SEQUENCER(config, m_ds);
 	m_ds->input_bit().set(FUNC(tek2465_state::cont_data));
+
+	TEK2465_TRIGGER_DIE(config, m_trig_a);
+	m_trig_a->input_bit().set(FUNC(tek2465_state::cont_data));
+
+	TEK2465_TRIGGER_DIE(config, m_trig_b);
+	m_trig_b->input_bit().set(FUNC(tek2465_state::cont_data));
 
 	// Create the A5 board device and hook it up to DLY_REF_0/1.
 	TEK2465_A4_BOARD(config, m_a4);
@@ -635,7 +712,6 @@ void tek2465_state::debug_init() {
 		debugger_console& con = machine().debugger().console();
 
 		con.register_command("sweep", CMDFLAG_NONE, 0, 0, std::bind(&tek2465_state::debug_sweep, this, _1));
-		con.register_command("trig", CMDFLAG_NONE, 0, 0, std::bind(&tek2465_state::debug_trigger, this, _1));
 		con.register_command("port1", CMDFLAG_NONE, 0, 0, std::bind(&tek2465_state::debug_port1, this, _1));
 		con.register_command("port2", CMDFLAG_NONE, 0, 0, std::bind(&tek2465_state::debug_port2, this, _1));
 		con.register_command("pa", CMDFLAG_NONE, 0, 0, std::bind(&tek2465_state::debug_pa, this, _1));
@@ -657,26 +733,6 @@ void tek2465_state::debug_sweep(const std::vector<std::string_view> &params)  {
 
 	print_sweep_state("A", m_swp_a_shift);
 	print_sweep_state("B", m_swp_b_shift);
-}
-
-void tek2465_state::debug_trigger(const std::vector<std::string_view> &params) {
-	auto print_trigger_state = [this](const char* name, uint8_t state) {
-		debugger_console &con = machine().debugger().console();
-
-		con.printf("TRIG%s: 0x%02X\n", name, state);
-
-		con.printf("  -TM0, Not Trigger Mode LSB: %d\n", BIT(state, 0));
-		con.printf("  -TSM1, Not Trigger Mode MSB: %d\n", BIT(state, 1));
-		con.printf("  -FR, Not Free Run, Continuous Trigger Gate: %d\n", BIT(state, 2));
-		con.printf("  -HFR, Not Insert 50kHz Low Pass: %d\n", BIT(state, 3));
-		con.printf("  -LFT, Not Insert 50kHz High Pass: %d\n", BIT(state, 4));
-		con.printf("  -AC, Not Insert 20 Hz High Pass: %d\n", BIT(state, 5));
-		con.printf("  SL1, Slope for Not Delay Select = 1: %d\n", BIT(state, 6));
-		con.printf("  SL0, Slope for Not Delay Select = 0: %d\n", BIT(state, 7));
-	};
-
-	print_trigger_state("A", m_trig_a_shift);
-	print_trigger_state("B", m_trig_b_shift);
 }
 
 void tek2465_state::debug_port1(const std::vector<std::string_view> &params) {
@@ -841,9 +897,6 @@ void tek2465_state::machine_start() {
 	save_item(NAME(m_swp_a_shift));
 	save_item(NAME(m_swp_b_shift));
 
-	save_item(NAME(m_trig_a_shift));
-	save_item(NAME(m_trig_b_shift));
-
 	save_item(NAME(m_attn_shift));
 
 	save_item(NAME(ch1.dc_ac));
@@ -933,9 +986,9 @@ void tek2465_state::tek2465_map(address_map& map) {
 	// A_SWP_CLK
 	map(0x09CC, 0x09CC).mirror(0x630).rw(FUNC(tek2465_state::a_swp_r), FUNC(tek2465_state::a_swp_w));
 	// B_TRIG_CLK
-	map(0x09CD, 0x09CD).mirror(0x630).rw(FUNC(tek2465_state::b_trig_r), FUNC(tek2465_state::b_trig_w));
+	map(0x09CD, 0x09CD).mirror(0x630).rw(m_trig_b, FUNC(tek2465_trigger_die_device::cc_r), FUNC(tek2465_trigger_die_device::cc_w));
 	// A_TRIG_CLK
-	map(0x09CE, 0x09CE).mirror(0x630).rw(FUNC(tek2465_state::a_trig_r), FUNC(tek2465_state::a_trig_w));
+	map(0x09CE, 0x09CE).mirror(0x630).rw(m_trig_a, FUNC(tek2465_trigger_die_device::cc_r), FUNC(tek2465_trigger_die_device::cc_w));
 	// TRIG_STAT_STRB
 	map(0x09CF, 0x09CF).mirror(0x630).rw(m_ds, FUNC(tek2465_display_sequencer_device::tss_r), FUNC(tek2465_display_sequencer_device::tss_w));
 
@@ -1111,22 +1164,6 @@ uint8_t tek2465_state::a_swp_r() {
 }
 void tek2465_state::a_swp_w(uint8_t data) {
 	a_swp_r();
-}
-
-uint8_t tek2465_state::b_trig_r() {
-	m_trig_b_shift = (m_trig_b_shift << 1) | BIT(m_port_2, 0);
-	return 0x01;
-}
-void tek2465_state::b_trig_w(uint8_t data) {
-	b_trig_r();
-}
-
-uint8_t tek2465_state::a_trig_r() {
-	m_trig_a_shift = (m_trig_a_shift << 1) | BIT(m_port_2, 0);
-	return 0x01;
- }
-void tek2465_state::a_trig_w(uint8_t data) {
-	a_trig_r();
 }
 
 void tek2465_state::dmux_0_update_dac() {
