@@ -26,8 +26,6 @@
 #define VERBOSE 1
 #include "logmacro.h"
 
-class tek2465_state;
-
 // Readout board state.
 class tek2465_a4_device : public device_t {
 public:
@@ -100,7 +98,7 @@ protected:
 	void device_start() override;
 
 private:
-	void debug_ds(const std::vector<std::string_view> &params);
+	void debug(const std::vector<std::string_view> &params);
 
 	devcb_read8 m_input_bit_cb;
 
@@ -111,6 +109,19 @@ private:
 	// The trigger status register.
 	//   0x0001: single sweep not complete.
 	//   0x0800; A triggered.
+	// Looping the 05 test with the TSO pinned to:
+	// - 0x0xxx yields error 22:
+	//   Negative level not negative enough.
+	//   Positive level not positive enough.
+	// - 0x8xxx yields error 24:
+	//   Negative level too negative.
+	//   Positive level not positive enough.
+	// - 0x4xxx yields error 42:
+	//   Negative level not negative enough.
+	//   Positive level too positive.
+	// - 0xCxxx yields error 44:
+	//   Negative level too negative.
+	//   Positive level too positive.
 	uint16_t m_tso = 0;
 	// Number of bits left to shift out.
 	uint8_t m_tso_bits_remaining = 0;
@@ -211,8 +222,6 @@ private:
 	void debug_init();
 
 	// Register debug dumpers.
-	// Display sequencer shift register breakdown.
-	void debug_ds(const std::vector<std::string_view> &params);
 	// Port 1/2 breakdown.
 	void debug_port1(const std::vector<std::string_view> &params);
 	void debug_port2(const std::vector<std::string_view> &params);
@@ -323,6 +332,8 @@ private:
 	attn ch2;
 
 	// Shift registers for the CH1/CH2 preamps.
+	// These almost certainly contain a 203-0210-90 die, which
+	// is sadly missing from the tek_made catalog.
 	// According to the service manual, each preamp can provide
 	// 1/10, 1/2, 1/4, 1, 2.5 attenuation/amplification. Looking at
 	// the settings applied in use, these are the codings:
@@ -485,16 +496,16 @@ void tek2465_display_sequencer_device::device_start() {
 
 		debugger_console& con = machine().debugger().console();
 
-		con.register_command("ds", CMDFLAG_NONE, 0, 0, std::bind(&tek2465_display_sequencer_device::debug_ds, this, _1));
+		con.register_command("ds", CMDFLAG_NONE, 0, 0, std::bind(&tek2465_display_sequencer_device::debug, this, _1));
 	}
 }
 
-void tek2465_display_sequencer_device::debug_ds(const std::vector<std::string_view> &params) {
+void tek2465_display_sequencer_device::debug(const std::vector<std::string_view> &params) {
 	debugger_console &con = machine().debugger().console();
 
-	con.printf("DS SHIFT: 0x%08X\n", m_input_reg);
-	con.printf("  MS10-14: 0x%02X\n", bitswap(m_input_reg, 4, 3, 2, 1, 0));
-	con.printf("  DS10-14: 0x%02X\n", bitswap(m_input_reg, 5, 6, 7, 8, 9));
+	con.printf("DS INPUT REG: 0x%08X\n", m_input_reg);
+	con.printf("  MSI0-4: 0x%02X\n", bitswap(m_input_reg, 4, 3, 2, 1, 0));
+	con.printf("  DSI0-4: 0x%02X\n", bitswap(m_input_reg, 5, 6, 7, 8, 9));
 	con.printf("  TH0-4: 0x%02X\n", bitswap(m_input_reg, 10, 11, 12, 13, 14));
 	con.printf("  EXT-SWP: %X\n", BIT(m_input_reg, 15));
 	con.printf("  DL-END_MAIN: %X\n", BIT(m_input_reg, 16));
@@ -520,8 +531,23 @@ void tek2465_display_sequencer_device::debug_ds(const std::vector<std::string_vi
 	con.printf("  HDS7: %X\n", BIT(m_input_reg, 36));
 	con.printf("  Slave delta: %X\n", BIT(m_input_reg, 37));
 	con.printf("  VT0-2: 0x%02X\n", bitswap(m_input_reg, 40, 39, 38));
-	con.printf("  CSR0-2M: 0x%02X\n", bitswap(m_input_reg, 43, 42, 41));
-	con.printf("  CSR0-2D: 0x%02X\n", bitswap(m_input_reg, 46, 45, 44));
+	auto trig_mode = [](uint8_t mode) -> const char* {
+		switch (mode) {
+			case 0: return "CH5";
+			case 1: return "CH1";
+			case 2: return "CH2";
+			case 3: return "CH1 + CH2";
+			case 4: return "CH5";
+			case 5: return "CH3";
+			case 6: return "CH4";
+			case 7: return "VERT";
+			default: return "???";
+		}
+	};
+	const uint8_t csm = bitswap(m_input_reg, 43, 42, 41);
+	con.printf("  CSR0-2M: 0x%02X(%s)\n", csm, trig_mode(csm));
+	const uint8_t csd = bitswap(m_input_reg, 46, 45, 44);
+	con.printf("  CSR0-2D: 0x%02X(%s)\n", csd, trig_mode(csd));
 	con.printf("  Counter test: %X\n", BIT(m_input_reg, 47));
 	con.printf("  CP0-4: 0x%02X\n", bitswap(m_input_reg, 52, 52, 50, 49, 48));
 	con.printf("  CHL: %X\n", BIT(m_input_reg, 53));
