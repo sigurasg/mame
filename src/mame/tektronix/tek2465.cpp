@@ -89,8 +89,8 @@ public:
 	uint8_t tss_r();
 	void tss_w(uint8_t data) { tss_r(); }
 
-	// Returns the MSB of the trigger status shift register.
-	uint8_t tso() { return BIT(m_tso_shift, 15); }
+	// Returns the LSB of the trigger status shift register.
+	uint8_t tso() { return m_tso_bits_remaining ? BIT(m_tso_shift, 0) : BIT(m_tso, 0); }
 
 	auto input_bit() { return m_input_bit_cb.bind(); }
 
@@ -107,19 +107,19 @@ private:
 	uint64_t m_input_reg = 0;
 
 	// The trigger status register.
-	//   0x0001: single sweep not complete.
-	//   0x0800; A triggered.
+	//   0x0001: Single sweep not complete(?).
+	//   0x0020; A triggered(?).
 	// Looping the 05 test with the TSO pinned to:
-	// - 0x0xxx yields error 22:
+	// - 0x0000 yields error 22:
 	//   Negative level not negative enough.
 	//   Positive level not positive enough.
-	// - 0x8xxx yields error 24:
+	// - 0x0002 yields error 24:
 	//   Negative level too negative.
 	//   Positive level not positive enough.
-	// - 0x4xxx yields error 42:
+	// - 0x0004 yields error 42:
 	//   Negative level not negative enough.
 	//   Positive level too positive.
-	// - 0xCxxx yields error 44:
+	// - 0x0006 yields error 44:
 	//   Negative level too negative.
 	//   Positive level too positive.
 	uint16_t m_tso = 0;
@@ -457,14 +457,34 @@ void tek2465_trigger_die_device::debug(const std::vector<std::string_view> &para
 	debugger_console &con = machine().debugger().console();
 
 	con.printf("%s: 0x%02X\n", tag(), m_reg);
-	con.printf("  -TM0, Not Trigger Mode LSB: %d\n", BIT(m_reg, 0));
-	con.printf("  -TSM1, Not Trigger Mode MSB: %d\n", BIT(m_reg, 1));
+	auto trig_mode = [](uint8_t not_mode) -> const char* {
+		switch ((~not_mode) & 0x3) {
+			case 0: return "SWEEP";
+			case 1: return "SLOW COMPARE";
+			case 2: return "FAST_COMPARE";
+			case 3: return "STROBED FAST COMPARE";
+			default: return "???";
+		}
+	};
+	const uint8_t mode = bitswap(m_reg, 0, 1);
+	con.printf("  -TM0-1, Not Trigger Mode: %d(%s)\n", mode, trig_mode(mode));
 	con.printf("  -FR, Not Free Run, Continuous Trigger Gate: %d\n", BIT(m_reg, 2));
 	con.printf("  -HFR, Not Insert 50kHz Low Pass: %d\n", BIT(m_reg, 3));
 	con.printf("  -LFT, Not Insert 50kHz High Pass: %d\n", BIT(m_reg, 4));
 	con.printf("  -AC, Not Insert 20 Hz High Pass: %d\n", BIT(m_reg, 5));
 	con.printf("  SL1, Slope for Not Delay Select = 1: %d\n", BIT(m_reg, 6));
 	con.printf("  SL0, Slope for Not Delay Select = 0: %d\n", BIT(m_reg, 7));
+	const uint8_t slope = bitswap(m_reg, 6, 7);
+	auto eff_slope = [](uint8_t slope) -> const char* {
+		switch (slope) {
+			case 0: return "POS";
+			case 1: return "~DS";
+			case 2: return "DS";
+			case 3: return "NEG";
+			default: return "???";
+		}
+	};
+	con.printf("  TRIG slope: %s\n", eff_slope(slope));
 }
 
 tek2465_display_sequencer_device::tek2465_display_sequencer_device(const machine_config &config, const char *tag, device_t *owner, u32 clock) :
@@ -474,10 +494,10 @@ tek2465_display_sequencer_device::tek2465_display_sequencer_device(const machine
 
 uint8_t tek2465_display_sequencer_device::tss_r() {
 	if (m_tso_bits_remaining == 0) {
-		m_tso_shift = m_tso;
+		m_tso_shift = m_tso >> 1;
 		m_tso_bits_remaining = 15;
 	} else {
-		m_tso_shift <<= 1;
+		m_tso_shift >>= 1;
 		--m_tso_bits_remaining;
 	}
 	return 0x01;
