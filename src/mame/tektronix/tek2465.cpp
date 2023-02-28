@@ -107,7 +107,7 @@ private:
 	uint64_t m_input_reg = 0;
 
 	// The trigger status register.
-	//   0x0001: Single sweep not complete(?).
+	//   0x0001: Single sweep in progress(?).
 	//   0x0020; A triggered(?).
 	// Looping the 05 test with the TSO pinned to:
 	// - 0x0000 yields error 22:
