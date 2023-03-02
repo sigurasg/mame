@@ -80,7 +80,8 @@ public:
 	// toggle it from read/write.
 	uint8_t cc_r() {
 		// Reset the TSO shift register.
-		m_tso_bits_remaining = 0;
+		m_tso_shift = m_tso;
+		m_tso_bits_remaining = 15;
 		m_input_reg = BIT((m_input_reg << 1) | m_input_bit_cb(), 0, 55);
 		return 0x01;
 	}
@@ -90,7 +91,7 @@ public:
 	void tss_w(uint8_t data) { tss_r(); }
 
 	// Returns the LSB of the trigger status shift register.
-	uint8_t tso() { return m_tso_bits_remaining ? BIT(m_tso_shift, 0) : BIT(m_tso, 0); }
+	uint8_t tso() { return BIT(m_tso_shift, 0); }
 
 	auto input_bit() { return m_input_bit_cb.bind(); }
 
@@ -494,7 +495,8 @@ tek2465_display_sequencer_device::tek2465_display_sequencer_device(const machine
 
 uint8_t tek2465_display_sequencer_device::tss_r() {
 	if (m_tso_bits_remaining == 0) {
-		m_tso_shift = m_tso >> 1;
+		// The shift register is empty, reset it.
+		m_tso_shift = m_tso;
 		m_tso_bits_remaining = 15;
 	} else {
 		m_tso_shift >>= 1;
