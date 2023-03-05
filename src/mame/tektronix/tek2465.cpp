@@ -108,8 +108,30 @@ private:
 	uint64_t m_input_reg = 0;
 
 	// The trigger status register.
-	//   0x0001: Single sweep in progress(?).
+	//   0x0001: Single sequence not in progress(?).
 	//   0x0020; A triggered(?).
+	//
+	// It stands to reason that this register has bits for A/B trigger
+	// status, as well as bits for "sweep or sequence in progress".
+	// Ponder what e.g. happens when the A/B sweep are really slow, say
+	// 500ms/DIV. In this case the scope displays the "TRIG'D" light the
+	// whole time the sweep is in progress. I think this means that either
+	// the triggered bit is latched while the sweep it caused is in
+	// progress, or more likely there's a "sweep in progress" bit.
+	//
+	// The upper byte is a two digit BCD-ish encoded A(?) sweep counter.
+	//   The encoding is a little wonky, as the decimal digits map as
+	//   follows:
+	//   0: 0x0
+	//   1: 0x1
+	//   2: 0x2
+	//   3: 0x3
+	//   4: 0x6
+	//   5: 0x7
+	//   6: 0xC
+	//   7: 0xD
+	//   8: 0x8
+	//   9: 0x9
 	// Looping the 05 test with the TSO pinned to:
 	// - 0x0000 yields error 22:
 	//   Negative level not negative enough.
