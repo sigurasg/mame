@@ -446,9 +446,11 @@ void tek2465_sweep_hybrid_device::device_start() {
 
 	save_item(NAME(m_reg));
 
-	debugger_console& con = machine().debugger().console();
-	// Register as the device tag, excluding the starting colon.
-	con.register_command(tag() + 1, CMDFLAG_NONE, 0, 0, std::bind(&tek2465_sweep_hybrid_device::debug, this, std::placeholders::_1));
+	if (machine().debug_flags & DEBUG_FLAG_ENABLED) {
+		debugger_console& con = machine().debugger().console();
+		// Register as the device tag, excluding the starting colon.
+		con.register_command(tag() + 1, CMDFLAG_NONE, 0, 0, std::bind(&tek2465_sweep_hybrid_device::debug, this, std::placeholders::_1));
+	}
 }
 
 void tek2465_sweep_hybrid_device::debug(const std::vector<std::string_view> &params) {
@@ -471,9 +473,11 @@ void tek2465_trigger_die_device::device_start() {
 
 	save_item(NAME(m_reg));
 
-	debugger_console& con = machine().debugger().console();
-	// Register as the device tag, excluding the starting colon.
-	con.register_command(tag() + 1, CMDFLAG_NONE, 0, 0, std::bind(&tek2465_trigger_die_device::debug, this, std::placeholders::_1));
+	if (machine().debug_flags & DEBUG_FLAG_ENABLED) {
+		debugger_console& con = machine().debugger().console();
+		// Register as the device tag, excluding the starting colon.
+		con.register_command(tag() + 1, CMDFLAG_NONE, 0, 0, std::bind(&tek2465_trigger_die_device::debug, this, std::placeholders::_1));
+	}
 }
 
 void tek2465_trigger_die_device::debug(const std::vector<std::string_view> &params) {
